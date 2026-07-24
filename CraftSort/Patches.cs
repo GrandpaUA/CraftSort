@@ -14,12 +14,24 @@ namespace CraftSort
     }
 
     [HarmonyPatch(typeof(InventoryGui), "UpdateCraftingPanel")]
+    [HarmonyPriority(Priority.Last)]
     class Patch_UpdateCraftingPanel
     {
         static void Postfix(InventoryGui __instance)
         {
             if (!CraftSortPlugin.Enabled) return;
             TabUI.EnsureTabsExist(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), "Update")]
+    [HarmonyPriority(Priority.Last)]
+    class Patch_InventoryGui_Update
+    {
+        static void Postfix(InventoryGui __instance)
+        {
+            if (!CraftSortPlugin.Enabled) return;
+            TabUI.TickPosition();
         }
     }
 

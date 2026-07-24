@@ -22,12 +22,10 @@ namespace CraftSort
         private static readonly Color BorderCol  = new Color(1.0f, 0.82f, 0.15f, 1.0f);
 
         private const float ButtonHeight = 22f;
+        private const float ContainerWidth = 72f;
+        private const float ContainerGap = 9f;
         private const int CornerRadius = 4;
         private const int BorderThickness = 3;
-        private const float MinContainerWidth = 38f;
-        private const float MaxContainerWidth = 80f;
-        private const float ContainerLeftPad = 2f;
-        private const float ContainerGap = 3f;
 
         public static void EnsureTabsExist(InventoryGui gui)
         {
@@ -36,7 +34,6 @@ namespace CraftSort
 
             if (_container != null)
             {
-                UpdateContainerWidth();
                 UpdateButtonStates();
                 UpdateGroupVisibility();
                 return;
@@ -45,24 +42,32 @@ namespace CraftSort
             CreateTabs(gui);
         }
 
+        public static void TickPosition()
+        {
+            if (_container == null || _containerRect == null || _panelRect == null)
+                return;
+
+            UpdateContainerPosition();
+        }
+
         private static void CreateTabs(InventoryGui gui)
         {
             _panelRect = gui.m_crafting;
-            _framesSinceCreate = 0;
-            _lastWidth = -1f;
 
             _roundedSprite = CreateRoundedSprite(32, 32, CornerRadius);
             _borderSprite = CreateRoundedBorderSprite(32, 32, CornerRadius, BorderThickness);
 
+            Transform safeParent = FindSafeParent(_panelRect);
+
             _container = new GameObject("CraftSortTabContainer");
-            _container.transform.SetParent(_panelRect, false);
+            _container.transform.SetParent(safeParent, false);
+            _container.SetActive(false);
 
             _containerRect = _container.AddComponent<RectTransform>();
-            _containerRect.anchorMin = new Vector2(0f, 0.12f);
-            _containerRect.anchorMax = new Vector2(0f, 0.74f);
-            _containerRect.pivot = new Vector2(0f, 1f);
-            _containerRect.offsetMin = new Vector2(ContainerLeftPad, 0f);
-            _containerRect.offsetMax = new Vector2(ContainerLeftPad + 50f, 0f);
+            _containerRect.pivot = new Vector2(1f, 0.5f);
+            _containerRect.anchorMin = new Vector2(0.5f, 0.5f);
+            _containerRect.anchorMax = new Vector2(0.5f, 0.5f);
+            _containerRect.sizeDelta = new Vector2(ContainerWidth, 400f);
 
             var vlg = _container.AddComponent<VerticalLayoutGroup>();
             vlg.spacing = 2f;
@@ -70,7 +75,7 @@ namespace CraftSort
             vlg.childForceExpandHeight = false;
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
-            vlg.childAlignment = TextAnchor.UpperLeft;
+            vlg.childAlignment = TextAnchor.UpperCenter;
 
             var foodTabs = new (SortMode mode, string label)[]
             {
@@ -106,120 +111,63 @@ namespace CraftSort
             UpdateButtonStates();
         }
 
-        private static float _lastWidth = -1f;
-        private static int _framesSinceCreate;
+        private static Transform FindSafeParent(RectTransform panel)
+        {
+            var canvas = panel.GetComponentInParent<Canvas>();
+            Transform? canvasTransform = canvas != null ? canvas.transform : null;
 
-        private static void UpdateContainerWidth()
+            Transform current = panel.parent;
+            while (current != null && current != canvasTransform)
+            {
+                if (current.GetComponent<RectMask2D>() != null ||
+                    current.GetComponent<Mask>() != null)
+                {
+                    return current.parent ?? canvasTransform ?? panel.parent;
+                }
+                current = current.parent;
+            }
+
+            return canvasTransform ?? panel.parent;
+        }
+
+        private static void UpdateContainerPosition()
         {
             if (_containerRect == null || _panelRect == null) return;
 
-            _framesSinceCreate++;
-            if (_framesSinceCreate < 3) return;
-
-            float width = DetectAvailableWidth();
-            if (Mathf.Approximately(width, _lastWidth)) return;
-            _lastWidth = width;
-
-            _containerRect.offsetMax = new Vector2(ContainerLeftPad + width, 0f);
-        }
-
-        private static float DetectAvailableWidth()
-        {
-            if (_panelRect == null) return 40f;
-
-            var panelCorners = new Vector3[4];
-            _panelRect.GetWorldCorners(panelCorners);
-            float panelWorldWidth = Vector3.Distance(panelCorners[0], panelCorners[3]);
-            if (panelWorldWidth < 1f) return 40f;
+            if (!_panelRect.gameObject.activeInHierarchy)
+            {
+                if (_container!.activeSelf)
+                    _container.SetActive(false);
+                return;
+            }
 
             Canvas.ForceUpdateCanvases();
 
-            float recipeLeft = FindRecipeListLeftEdge();
-            float panelW = _panelRect.rect.width;
-
-            if (recipeLeft <= 0f)
-            {
-                float pctFallback = panelW * 0.065f;
-                float result = Mathf.Clamp(pctFallback, MinContainerWidth, MaxContainerWidth);
-                CraftSortPlugin.Log(
-                    $"[TabUI] Detection failed. panelW={panelW:F0}, fallback={result:F0}");
-                return result;
-            }
-
-            float available = recipeLeft - ContainerLeftPad - ContainerGap;
-            float clamped = Mathf.Clamp(available, MinContainerWidth, MaxContainerWidth);
-            CraftSortPlugin.Log(
-                $"[TabUI] Detected recipeLeft={recipeLeft:F0}, panelW={panelW:F0}, width={clamped:F0}");
-            return clamped;
-        }
-
-        private static float FindRecipeListLeftEdge()
-        {
-            if (_panelRect == null) return 0f;
-
-            float panelWidth = _panelRect.rect.width;
-            if (panelWidth < 1f) return 0f;
-
-            float panelLeftLocal = -panelWidth * _panelRect.pivot.x;
-
-            float bestDistance = float.MaxValue;
-
-            var scrollRects = _panelRect.GetComponentsInChildren<ScrollRect>(true);
-            foreach (var sr in scrollRects)
-            {
-                var srRect = sr.GetComponent<RectTransform>();
-                if (srRect == null || srRect == _containerRect) continue;
-
-                float dist = GetLeftEdgeDistanceFromPanelLeft(srRect, panelLeftLocal);
-                if (dist > 5f && dist < panelWidth * 0.30f && dist < bestDistance)
-                {
-                    bestDistance = dist;
-                }
-            }
-
-            if (bestDistance < float.MaxValue)
-                return bestDistance;
-
-            var grids = _panelRect.GetComponentsInChildren<GridLayoutGroup>(true);
-            foreach (var grid in grids)
-            {
-                var gridRect = grid.GetComponent<RectTransform>();
-                if (gridRect == null || gridRect == _containerRect) continue;
-
-                float dist = GetLeftEdgeDistanceFromPanelLeft(gridRect, panelLeftLocal);
-                if (dist > 5f && dist < panelWidth * 0.30f && dist < bestDistance)
-                {
-                    bestDistance = dist;
-                }
-            }
-
-            if (bestDistance < float.MaxValue)
-                return bestDistance;
-
-            var hLayouts = _panelRect.GetComponentsInChildren<HorizontalLayoutGroup>(true);
-            foreach (var hl in hLayouts)
-            {
-                var hlRect = hl.GetComponent<RectTransform>();
-                if (hlRect == null || hlRect == _containerRect) continue;
-                if (hlRect.rect.width < panelWidth * 0.3f) continue;
-
-                float dist = GetLeftEdgeDistanceFromPanelLeft(hlRect, panelLeftLocal);
-                if (dist > 5f && dist < panelWidth * 0.30f && dist < bestDistance)
-                {
-                    bestDistance = dist;
-                }
-            }
-
-            return bestDistance < float.MaxValue ? bestDistance : 0f;
-        }
-
-        private static float GetLeftEdgeDistanceFromPanelLeft(RectTransform child, float panelLeftLocal)
-        {
             var corners = new Vector3[4];
-            child.GetWorldCorners(corners);
+            _panelRect.GetWorldCorners(corners);
 
-            Vector3 localBL = _panelRect!.InverseTransformPoint(corners[0]);
-            return localBL.x - panelLeftLocal;
+            float panelLeftWorld = corners[0].x;
+            float panelTopWorld = corners[1].y;
+            float panelBottomWorld = corners[0].y;
+            float panelHeight = panelTopWorld - panelBottomWorld;
+
+            if (panelHeight < 10f) return;
+
+            float recipeTop = panelBottomWorld + panelHeight * 0.60f;
+            float recipeBottom = panelBottomWorld + panelHeight * 0.12f;
+            float centerY = (recipeTop + recipeBottom) / 2f + 4f;
+            float height = recipeTop - recipeBottom;
+
+            float targetX = panelLeftWorld - ContainerGap;
+
+            if (Mathf.Abs(targetX) < 1f && Mathf.Abs(centerY) < 1f)
+                return;
+
+            _containerRect.position = new Vector3(targetX, centerY, 0f);
+            _containerRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+
+            if (!_container!.activeSelf)
+                _container.SetActive(true);
         }
 
         private static void CreateButton(string label, SortMode mode, string group)
@@ -260,11 +208,9 @@ namespace CraftSort
             var text = labelGo.AddComponent<Text>();
             text.text = label;
             text.color = Color.white;
-            text.fontSize = 9;
+            text.fontSize = 10;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
 
             Font? font = null;
             if (InventoryGui.instance != null)
@@ -360,8 +306,6 @@ namespace CraftSort
             _buttons.Clear();
             _roundedSprite = null;
             _borderSprite = null;
-            _lastWidth = -1f;
-            _framesSinceCreate = 0;
         }
 
         private static Sprite CreateRoundedSprite(int width, int height, int radius)
