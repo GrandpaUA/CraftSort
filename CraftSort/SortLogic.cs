@@ -24,21 +24,15 @@ namespace CraftSort
     {
         public static SortMode CurrentMode = SortMode.None;
 
-        private static readonly List<(Recipe recipe, int originalWeight)> _weightBackup
-            = new List<(Recipe, int)>();
-
         private static float[] _valueCache = System.Array.Empty<float>();
         private static int[] _indexCache = System.Array.Empty<int>();
         private static string[] _nameCache = System.Array.Empty<string>();
-        private static Recipe[] _tempCache = System.Array.Empty<Recipe>();
 
         public static float[] GetValueCache() => _valueCache;
         public static int[] GetIndexCache() => _indexCache;
         public static string[] GetNameCache() => _nameCache;
         public static IComparer<int> ValueComparer => ValueIndexComparer.Instance;
         public static IComparer<int> NameComparer => NameIndexComparer.Instance;
-
-        public static float ComputeSortValue(Recipe? recipe) => GetSortValue(recipe);
 
         public static float GetSortValue(Recipe? recipe)
         {
@@ -91,77 +85,6 @@ namespace CraftSort
             return 0f;
         }
 
-        public static void ApplySort(List<Recipe> recipes)
-        {
-            _weightBackup.Clear();
-
-            if (CurrentMode == SortMode.None || recipes == null || recipes.Count < 2)
-                return;
-
-            int count = recipes.Count;
-            EnsureCaches(count);
-
-            if (CurrentMode == SortMode.Name)
-            {
-                ApplyNameSort(recipes, count);
-            }
-            else
-            {
-                ApplyValueSort(recipes, count);
-            }
-        }
-
-        private static void ApplyValueSort(List<Recipe> recipes, int count)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                var r = recipes[i];
-                if (r == null) continue;
-
-                float val = GetSortValue(r);
-                _valueCache[i] = val;
-                _indexCache[i] = i;
-
-                _weightBackup.Add((r, r.m_listSortWeight));
-                int weight = -(int)(val * 100f);
-                r.m_listSortWeight = weight;
-            }
-
-            System.Array.Sort(_indexCache, 0, count, ValueIndexComparer.Instance);
-            ApplyOrder(recipes, count);
-        }
-
-        private static void ApplyNameSort(List<Recipe> recipes, int count)
-        {
-            var loc = Localization.instance;
-
-            for (int i = 0; i < count; i++)
-            {
-                var r = recipes[i];
-                if (r == null) continue;
-
-                _indexCache[i] = i;
-                _weightBackup.Add((r, r.m_listSortWeight));
-                r.m_listSortWeight = 0;
-
-                string? key = r.m_item?.m_itemData?.m_shared?.m_name;
-                string name = "";
-                if (key != null && loc != null)
-                {
-                    string loc_name = loc.Localize(key);
-                    if (loc_name != null) name = loc_name;
-                }
-                else if (key != null)
-                {
-                    name = key;
-                }
-                _nameCache[i] = name;
-            }
-
-            System.Array.Sort(_indexCache, 0, count, NameIndexComparer.Instance);
-            ApplyOrder(recipes, count);
-        }
-
         public static void EnsureCaches(int count)
         {
             if (_valueCache.Length < count)
@@ -169,27 +92,7 @@ namespace CraftSort
                 _valueCache = new float[count];
                 _indexCache = new int[count];
                 _nameCache = new string[count];
-                _tempCache = new Recipe[count];
             }
-        }
-
-        private static void ApplyOrder(List<Recipe> recipes, int count)
-        {
-            for (int i = 0; i < count; i++)
-                _tempCache[i] = recipes[_indexCache[i]];
-            for (int i = 0; i < count; i++)
-                recipes[i] = _tempCache[i];
-        }
-
-        public static void RestoreSortWeights()
-        {
-            for (int i = 0; i < _weightBackup.Count; i++)
-            {
-                var (recipe, original) = _weightBackup[i];
-                if (recipe != null)
-                    recipe.m_listSortWeight = original;
-            }
-            _weightBackup.Clear();
         }
 
         private sealed class ValueIndexComparer : IComparer<int>
