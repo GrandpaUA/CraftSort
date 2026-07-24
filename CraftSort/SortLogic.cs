@@ -17,7 +17,8 @@ namespace CraftSort
         Health,
         Stamina,
         Eitr,
-        Name
+        Name,
+        New
     }
 
     public static class SortLogic
@@ -47,9 +48,9 @@ namespace CraftSort
             switch (CurrentMode)
             {
                 case SortMode.Armor:
-                    return s.m_armor + ItemTypePriority(s, 6, 7, 11, 12, 17, 18);
+                    return s.m_armor + ArmorTypePriority(s);
                 case SortMode.Block:
-                    return s.m_blockPower + ItemTypePriority(s, 5);
+                    return s.m_blockPower + BlockTypePriority(s);
                 case SortMode.PhysDmg:
                     return s.m_damages.GetTotalPhysicalDamage();
                 case SortMode.ChopDmg:
@@ -65,24 +66,37 @@ namespace CraftSort
                 case SortMode.SpiritDmg:
                     return s.m_damages.m_spirit;
                 case SortMode.Health:
-                    return s.m_food + ItemTypePriority(s, 2);
+                    return s.m_food + FoodTypePriority(s);
                 case SortMode.Stamina:
-                    return s.m_foodStamina + ItemTypePriority(s, 2);
+                    return s.m_foodStamina + FoodTypePriority(s);
                 case SortMode.Eitr:
-                    return s.m_foodEitr + ItemTypePriority(s, 2);
+                    return s.m_foodEitr + FoodTypePriority(s);
                 default:
                     return 0f;
             }
         }
 
-        private static float ItemTypePriority(ItemDrop.ItemData.SharedData s, params int[] types)
+        private const float TypeBonus = 100000f;
+
+        private static float ArmorTypePriority(ItemDrop.ItemData.SharedData s)
         {
-            int t = (int)s.m_itemType;
-            for (int i = 0; i < types.Length; i++)
+            switch ((int)s.m_itemType)
             {
-                if (t == types[i]) return 100000f;
+                case 6: case 7: case 11: case 12: case 17: case 18:
+                    return TypeBonus;
+                default:
+                    return 0f;
             }
-            return 0f;
+        }
+
+        private static float BlockTypePriority(ItemDrop.ItemData.SharedData s)
+        {
+            return (int)s.m_itemType == 5 ? TypeBonus : 0f;
+        }
+
+        private static float FoodTypePriority(ItemDrop.ItemData.SharedData s)
+        {
+            return (int)s.m_itemType == 2 ? TypeBonus : 0f;
         }
 
         public static void EnsureCaches(int count)

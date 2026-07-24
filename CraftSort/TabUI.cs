@@ -15,9 +15,11 @@ namespace CraftSort
         private static readonly List<GameObject> _combatButtons = new List<GameObject>();
         private static readonly List<GameObject> _alwaysButtons = new List<GameObject>();
         private static MethodInfo? _updateCraftingPanel;
+        private static readonly object[] _updatePanelArgs = { false };
         private static Sprite? _roundedSprite;
         private static Sprite? _borderSprite;
         private static Font? _cachedFont;
+        private static Text? _newTabText;
 
         private static readonly Color NormalBg   = new Color(0.15f, 0.10f, 0.05f, 0.85f);
         private static readonly Color HoverBg    = new Color(0.30f, 0.22f, 0.08f, 0.95f);
@@ -39,6 +41,7 @@ namespace CraftSort
             {
                 UpdateButtonStates();
                 UpdateGroupVisibility();
+                UpdateNewCount(NewRecipeTracker.NewCount);
                 return;
             }
 
@@ -108,7 +111,13 @@ namespace CraftSort
                 CreateButton(label, mode, "_combat_");
 
             CreateButton("A\u2192Z", SortMode.Name, "_always_");
+            CreateButton("New", SortMode.New, "_always_");
 
+            var newBtn = _container.transform.Find("SortTab_New__always_");
+            if (newBtn != null)
+                _newTabText = newBtn.Find("Label")?.GetComponent<Text>();
+
+            UpdateNewCount(NewRecipeTracker.NewCount);
             UpdateGroupVisibility();
             UpdateButtonStates();
         }
@@ -265,12 +274,18 @@ namespace CraftSort
 
             try
             {
-                _updateCraftingPanel.Invoke(gui, new object[] { false });
+                _updateCraftingPanel.Invoke(gui, _updatePanelArgs);
             }
             catch (System.Exception ex)
             {
                 CraftSortPlugin.Log($"[TabUI] InvokeUpdateCraftingPanel error: {ex.InnerException?.Message ?? ex.Message}");
             }
+        }
+
+        public static void UpdateNewCount(int count)
+        {
+            if (_newTabText == null) return;
+            _newTabText.text = count > 0 ? $"New ({count})" : "New";
         }
 
         public static void Reset()
@@ -285,6 +300,7 @@ namespace CraftSort
             _alwaysButtons.Clear();
             _roundedSprite = null;
             _borderSprite = null;
+            _newTabText = null;
             _lastActiveMode = (SortMode)(-1);
         }
 

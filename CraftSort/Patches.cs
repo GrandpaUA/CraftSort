@@ -25,6 +25,8 @@ namespace CraftSort
         private static FieldInfo? _availableRecipesField;
         private static PropertyInfo? _recipeProp;
         private static FieldInfo? _recipeField;
+        private static PropertyInfo? _interfaceElementProp;
+        private static FieldInfo? _interfaceElementField;
         private static object[] _reorderCache = System.Array.Empty<object>();
 
         [HarmonyPrepare]
@@ -95,7 +97,15 @@ namespace CraftSort
             if (gui == null) return;
 
             var list = GetAvailableRecipesList(gui);
-            if (list == null || list.Count < 2) return;
+            if (list == null || list.Count == 0) return;
+
+            if (SortLogic.CurrentMode == SortMode.New)
+            {
+                FilterNewOnList(list);
+                return;
+            }
+
+            if (list.Count < 2) return;
 
             int count = list.Count;
             SortLogic.EnsureCaches(count);
@@ -106,13 +116,13 @@ namespace CraftSort
                 SortByValueOnList(list, count);
         }
 
-        private static IList? GetAvailableRecipesList(InventoryGui gui)
+        internal static IList? GetAvailableRecipesList(InventoryGui gui)
         {
             _availableRecipesField ??= AccessTools.Field(typeof(InventoryGui), "m_availableRecipes");
             return _availableRecipesField?.GetValue(gui) as IList;
         }
 
-        private static Recipe? GetRecipeFromPair(object pair)
+        internal static Recipe? GetRecipeFromPair(object pair)
         {
             if (_recipeProp == null && _recipeField == null)
             {
@@ -127,6 +137,50 @@ namespace CraftSort
             if (_recipeField != null)
                 return _recipeField.GetValue(pair) as Recipe;
             return null;
+        }
+
+        internal static GameObject? GetInterfaceElement(object pair)
+        {
+            if (_interfaceElementProp == null && _interfaceElementField == null)
+            {
+                var type = pair.GetType();
+                const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                _interfaceElementProp = type.GetProperty("InterfaceElement", flags);
+                if (_interfaceElementProp == null)
+                    _interfaceElementField = type.GetField("InterfaceElement", flags);
+            }
+            if (_interfaceElementProp != null)
+                return _interfaceElementProp.GetValue(pair) as GameObject;
+            if (_interfaceElementField != null)
+                return _interfaceElementField.GetValue(pair) as GameObject;
+            return null;
+        }
+
+        private static void FilterNewOnList(IList list)
+        {
+            NewRecipeTracker.EnsureLoaded();
+
+            int originalCount = list.Count;
+            int writeIdx = 0;
+            for (int i = 0; i < originalCount; i++)
+            {
+                var recipe = GetRecipeFromPair(list[i]);
+                if (NewRecipeTracker.IsNew(recipe))
+                {
+                    if (writeIdx != i)
+                        list[writeIdx] = list[i];
+                    writeIdx++;
+                }
+                else
+                {
+                    var element = GetInterfaceElement(list[i]);
+                    if (element != null)
+                        element.SetActive(false);
+                }
+            }
+
+            while (list.Count > writeIdx)
+                list.RemoveAt(list.Count - 1);
         }
 
         private static void SortByValueOnList(IList list, int count)
@@ -198,6 +252,7 @@ namespace CraftSort
         private static FieldInfo? _cacheField;
         private static FieldInfo? _pageField;
         private static MethodInfo? _getPerPageMethod;
+        private static readonly List<Recipe> _filteredCache = new List<Recipe>();
 
         [HarmonyPrepare]
         static bool Prepare()
@@ -221,19 +276,46 @@ namespace CraftSort
             var fullList = _cacheField.GetValue(null) as List<Recipe>;
             if (fullList == null || fullList.Count < 2) return;
 
+            if (SortLogic.CurrentMode == SortMode.New)
+            {
+                NewRecipeTracker.EnsureLoaded();
+                _filteredCache.Clear();
+                for (int i = 0; i < fullList.Count; i++)
+                {
+                    if (NewRecipeTracker.IsNew(fullList[i]))
+                        _filteredCache.Add(fullList[i]);
+                }
+
+                if (_pageField == null || _getPerPageMethod == null)
+                {
+                    recipes = new List<Recipe>(_filteredCache);
+                    return;
+                }
+
+                int page = (int)_pageField.GetValue(null);
+                int perPage = (int)_getPerPageMethod.Invoke(null, null);
+                if (perPage < 1) perPage = 13;
+
+                int offset = (page - 1) * perPage;
+                int count = System.Math.Min(perPage, _filteredCache.Count - offset);
+                if (count <= 0) { recipes = new List<Recipe>(); return; }
+                recipes = _filteredCache.GetRange(offset, count);
+                return;
+            }
+
             SortLogic.SortRecipeList(fullList);
 
             if (_pageField == null || _getPerPageMethod == null) return;
 
-            int page = (int)_pageField.GetValue(null);
-            int perPage = (int)_getPerPageMethod.Invoke(null, null);
-            if (perPage < 1) perPage = 13;
+            int page2 = (int)_pageField.GetValue(null);
+            int perPage2 = (int)_getPerPageMethod.Invoke(null, null);
+            if (perPage2 < 1) perPage2 = 13;
 
-            int offset = (page - 1) * perPage;
-            int count = System.Math.Min(perPage, fullList.Count - offset);
-            if (count <= 0) return;
+            int offset2 = (page2 - 1) * perPage2;
+            int count2 = System.Math.Min(perPage2, fullList.Count - offset2);
+            if (count2 <= 0) return;
 
-            recipes = fullList.GetRange(offset, count);
+            recipes = fullList.GetRange(offset2, count2);
         }
 
         private static void ResolveAAATypes()
@@ -322,6 +404,75 @@ namespace CraftSort
                     CraftSortPlugin.DefaultSortMode, true, out var mode)
                     ? mode : SortMode.None;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), "UpdateRecipeList", new[] { typeof(List<Recipe>) })]
+    [HarmonyPriority(Priority.Last)]
+    [HarmonyAfter(new[] {
+        "com.maxsch.valheim.vnei",
+        "org.bepinex.plugins.jewelcrafting",
+        "Azumatt.Recycle_N_Reclaim",
+        "Azumatt.AzuAntiArthriticCrafting",
+        "com.sighsorry1029.InventorySlots",
+        "shudnal.MyLittleUI",
+        "goldenrevolver.SortedMenus",
+        "aedenthorn.CraftingFilter",
+        "com.MoistGravy.CraftingSearchBar"
+    })]
+    class Patch_UpdateRecipeList_NewDots
+    {
+        static void Postfix(InventoryGui __instance)
+        {
+            if (!CraftSortPlugin.Enabled) return;
+            NewRecipeTracker.EnsureLoaded();
+
+            var list = Patch_UpdateRecipeList.GetAvailableRecipesList(__instance);
+            if (list == null) return;
+
+            int newCount = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var recipe = Patch_UpdateRecipeList.GetRecipeFromPair(list[i]);
+                var element = Patch_UpdateRecipeList.GetInterfaceElement(list[i]);
+                if (element == null) continue;
+
+                bool isNew = NewRecipeTracker.IsNew(recipe);
+                NewRecipeTracker.SetDot(element, isNew);
+                if (isNew) newCount++;
+            }
+
+            NewRecipeTracker.SetNewCount(newCount);
+            TabUI.UpdateNewCount(newCount);
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), "OnSelectedRecipe")]
+    class Patch_OnSelectedRecipe_Viewed
+    {
+        private static FieldInfo? _selectedRecipeField;
+
+        static void Postfix(InventoryGui __instance)
+        {
+            if (!CraftSortPlugin.Enabled) return;
+            NewRecipeTracker.EnsureLoaded();
+
+            _selectedRecipeField ??= AccessTools.Field(typeof(InventoryGui), "m_selectedRecipe");
+            if (_selectedRecipeField == null) return;
+
+            object selected = _selectedRecipeField.GetValue(__instance);
+            if (selected == null) return;
+
+            var recipe = Patch_UpdateRecipeList.GetRecipeFromPair(selected);
+            if (recipe == null || !NewRecipeTracker.IsNew(recipe)) return;
+
+            NewRecipeTracker.MarkViewed(recipe);
+
+            var element = Patch_UpdateRecipeList.GetInterfaceElement(selected);
+            if (element != null)
+                NewRecipeTracker.RemoveDot(element);
+
+            TabUI.UpdateNewCount(NewRecipeTracker.NewCount);
         }
     }
 }
