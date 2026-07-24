@@ -184,6 +184,110 @@ namespace CraftSort
         }
     }
 
+    /// <summary>
+    /// AAA Crafting compatibility: sorts the FULL cached recipe list before pagination slices it.
+    /// Runs AFTER AAA Crafting's Prefix (which populates RecipeListPerfCache.CraftSortedFiltered).
+    /// Without this, our Transpiler only sorts the current page (13 items).
+    /// </summary>
+    [HarmonyPatch(typeof(InventoryGui), "UpdateRecipeList", new[] { typeof(List<Recipe>) })]
+    [HarmonyPriority(Priority.Last)]
+    [HarmonyAfter(new[] { "Azumatt.AzuAntiArthriticCrafting" })]
+    class Patch_UpdateRecipeList_AAACrafting
+    {
+        private static bool _aaaChecked;
+        private static FieldInfo? _cacheField;
+        private static FieldInfo? _pageField;
+        private static MethodInfo? _getPerPageMethod;
+
+        [HarmonyPrepare]
+        static bool Prepare()
+        {
+            return BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("Azumatt.AzuAntiArthriticCrafting");
+        }
+
+        static void Prefix(ref List<Recipe> recipes)
+        {
+            if (!CraftSortPlugin.Enabled) return;
+            if (SortLogic.CurrentMode == SortMode.None) return;
+
+            if (!_aaaChecked)
+            {
+                _aaaChecked = true;
+                ResolveAAATypes();
+            }
+
+            if (_cacheField == null) return;
+
+            var fullList = _cacheField.GetValue(null) as List<Recipe>;
+            if (fullList == null || fullList.Count < 2) return;
+
+            SortLogic.SortRecipeList(fullList);
+
+            if (_pageField == null || _getPerPageMethod == null) return;
+
+            int page = (int)_pageField.GetValue(null);
+            int perPage = (int)_getPerPageMethod.Invoke(null, null);
+            if (perPage < 1) perPage = 13;
+
+            int offset = (page - 1) * perPage;
+            int count = System.Math.Min(perPage, fullList.Count - offset);
+            if (count <= 0) return;
+
+            recipes = fullList.GetRange(offset, count);
+        }
+
+        private static void ResolveAAATypes()
+        {
+            try
+            {
+                var cacheType = System.Type.GetType("AzuAntiArthriticCrafting.Patches.RecipeListPerfCache, AzuAntiArthriticCrafting");
+                if (cacheType == null)
+                {
+                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        cacheType = asm.GetType("AzuAntiArthriticCrafting.Patches.RecipeListPerfCache");
+                        if (cacheType != null) break;
+                    }
+                }
+                if (cacheType != null)
+                    _cacheField = cacheType.GetField("CraftSortedFiltered",
+                        BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+                var paginatorType = System.Type.GetType("AzuAntiArthriticCrafting.Patches.PaginatorPatches, AzuAntiArthriticCrafting");
+                if (paginatorType == null)
+                {
+                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        paginatorType = asm.GetType("AzuAntiArthriticCrafting.Patches.PaginatorPatches");
+                        if (paginatorType != null) break;
+                    }
+                }
+                if (paginatorType != null)
+                    _pageField = paginatorType.GetField("CraftingWindowPage",
+                        BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+                var utilsType = System.Type.GetType("AzuAntiArthriticCrafting.Utilities.Utilities, AzuAntiArthriticCrafting");
+                if (utilsType == null)
+                {
+                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        utilsType = asm.GetType("AzuAntiArthriticCrafting.Utilities.Utilities");
+                        if (utilsType != null) break;
+                    }
+                }
+                if (utilsType != null)
+                    _getPerPageMethod = utilsType.GetMethod("GetPerPage",
+                        BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+                CraftSortPlugin.Log($"[CraftSort] AAA Crafting compat: cache={_cacheField != null}, page={_pageField != null}, perPage={_getPerPageMethod != null}");
+            }
+            catch (System.Exception ex)
+            {
+                CraftSortPlugin.Log($"[CraftSort] AAA Crafting compat error: {ex.Message}");
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(InventoryGui), "UpdateCraftingPanel")]
     [HarmonyPriority(Priority.Last)]
     [HarmonyAfter(new[] {

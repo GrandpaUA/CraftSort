@@ -95,6 +95,54 @@ namespace CraftSort
             }
         }
 
+        private static Recipe?[] _recipeCache = System.Array.Empty<Recipe?>();
+
+        /// <summary>
+        /// Sorts a List&lt;Recipe&gt; in-place by CurrentMode.
+        /// Used for AAA Crafting's full cached list (global pagination sort).
+        /// </summary>
+        public static void SortRecipeList(List<Recipe> recipes)
+        {
+            if (recipes == null || recipes.Count < 2) return;
+            if (CurrentMode == SortMode.None) return;
+
+            int count = recipes.Count;
+            EnsureCaches(count);
+            if (_recipeCache.Length < count)
+                _recipeCache = new Recipe?[count];
+
+            if (CurrentMode == SortMode.Name)
+            {
+                var nameCache = GetNameCache();
+                var indexCache = GetIndexCache();
+                var loc = Localization.instance;
+                for (int i = 0; i < count; i++)
+                {
+                    string? key = recipes[i]?.m_item?.m_itemData?.m_shared?.m_name;
+                    indexCache[i] = i;
+                    nameCache[i] = (key != null && loc != null) ? (loc.Localize(key) ?? "") : (key ?? "");
+                }
+                System.Array.Sort(indexCache, 0, count, NameComparer);
+            }
+            else
+            {
+                var valueCache = GetValueCache();
+                var indexCache = GetIndexCache();
+                for (int i = 0; i < count; i++)
+                {
+                    valueCache[i] = GetSortValue(recipes[i]);
+                    indexCache[i] = i;
+                }
+                System.Array.Sort(indexCache, 0, count, ValueComparer);
+            }
+
+            var idx = GetIndexCache();
+            for (int i = 0; i < count; i++)
+                _recipeCache[i] = recipes[idx[i]];
+            for (int i = 0; i < count; i++)
+                recipes[i] = _recipeCache[i]!;
+        }
+
         private sealed class ValueIndexComparer : IComparer<int>
         {
             public static readonly ValueIndexComparer Instance = new ValueIndexComparer();
