@@ -9,7 +9,7 @@ namespace CraftSort
         static void Postfix(ref List<Recipe> available)
         {
             if (!CraftSortPlugin.Enabled) return;
-            SortLogic.SortRecipes(available);
+            SortLogic.ApplySortWeights(available);
         }
     }
 
@@ -20,18 +20,8 @@ namespace CraftSort
         static void Postfix(InventoryGui __instance)
         {
             if (!CraftSortPlugin.Enabled) return;
+            SortLogic.RestoreSortWeights();
             TabUI.EnsureTabsExist(__instance);
-        }
-    }
-
-    [HarmonyPatch(typeof(InventoryGui), "Update")]
-    [HarmonyPriority(Priority.Last)]
-    class Patch_InventoryGui_Update
-    {
-        static void Postfix(InventoryGui __instance)
-        {
-            if (!CraftSortPlugin.Enabled) return;
-            TabUI.TickPosition();
         }
     }
 

@@ -9,12 +9,10 @@ namespace CraftSort
     public static class TabUI
     {
         private static GameObject? _container;
-        private static RectTransform? _containerRect;
         private static readonly List<(Button btn, SortMode mode)> _buttons = new List<(Button, SortMode)>();
         private static MethodInfo? _updateCraftingPanel;
         private static Sprite? _roundedSprite;
         private static Sprite? _borderSprite;
-        private static RectTransform? _panelRect;
 
         private static readonly Color NormalBg   = new Color(0.15f, 0.10f, 0.05f, 0.85f);
         private static readonly Color HoverBg    = new Color(0.30f, 0.22f, 0.08f, 0.95f);
@@ -42,32 +40,22 @@ namespace CraftSort
             CreateTabs(gui);
         }
 
-        public static void TickPosition()
-        {
-            if (_container == null || _containerRect == null || _panelRect == null)
-                return;
-
-            UpdateContainerPosition();
-        }
-
         private static void CreateTabs(InventoryGui gui)
         {
-            _panelRect = gui.m_crafting;
+            var panel = gui.m_crafting;
 
             _roundedSprite = CreateRoundedSprite(32, 32, CornerRadius);
             _borderSprite = CreateRoundedBorderSprite(32, 32, CornerRadius, BorderThickness);
 
-            Transform safeParent = FindSafeParent(_panelRect);
-
             _container = new GameObject("CraftSortTabContainer");
-            _container.transform.SetParent(safeParent, false);
-            _container.SetActive(false);
+            _container.transform.SetParent(panel, false);
 
-            _containerRect = _container.AddComponent<RectTransform>();
-            _containerRect.pivot = new Vector2(1f, 0.5f);
-            _containerRect.anchorMin = new Vector2(0.5f, 0.5f);
-            _containerRect.anchorMax = new Vector2(0.5f, 0.5f);
-            _containerRect.sizeDelta = new Vector2(ContainerWidth, 400f);
+            var rt = _container.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0.23f);
+            rt.anchorMax = new Vector2(0f, 0.71f);
+            rt.pivot = new Vector2(1f, 0.5f);
+            rt.anchoredPosition = new Vector2(-ContainerGap, 0f);
+            rt.sizeDelta = new Vector2(ContainerWidth, 0f);
 
             var vlg = _container.AddComponent<VerticalLayoutGroup>();
             vlg.spacing = 2f;
@@ -109,65 +97,6 @@ namespace CraftSort
 
             UpdateGroupVisibility();
             UpdateButtonStates();
-        }
-
-        private static Transform FindSafeParent(RectTransform panel)
-        {
-            var canvas = panel.GetComponentInParent<Canvas>();
-            Transform? canvasTransform = canvas != null ? canvas.transform : null;
-
-            Transform current = panel.parent;
-            while (current != null && current != canvasTransform)
-            {
-                if (current.GetComponent<RectMask2D>() != null ||
-                    current.GetComponent<Mask>() != null)
-                {
-                    return current.parent ?? canvasTransform ?? panel.parent;
-                }
-                current = current.parent;
-            }
-
-            return canvasTransform ?? panel.parent;
-        }
-
-        private static void UpdateContainerPosition()
-        {
-            if (_containerRect == null || _panelRect == null) return;
-
-            if (!_panelRect.gameObject.activeInHierarchy)
-            {
-                if (_container!.activeSelf)
-                    _container.SetActive(false);
-                return;
-            }
-
-            Canvas.ForceUpdateCanvases();
-
-            var corners = new Vector3[4];
-            _panelRect.GetWorldCorners(corners);
-
-            float panelLeftWorld = corners[0].x;
-            float panelTopWorld = corners[1].y;
-            float panelBottomWorld = corners[0].y;
-            float panelHeight = panelTopWorld - panelBottomWorld;
-
-            if (panelHeight < 10f) return;
-
-            float recipeTop = panelBottomWorld + panelHeight * 0.60f;
-            float recipeBottom = panelBottomWorld + panelHeight * 0.12f;
-            float centerY = (recipeTop + recipeBottom) / 2f + 4f;
-            float height = recipeTop - recipeBottom;
-
-            float targetX = panelLeftWorld - ContainerGap;
-
-            if (Mathf.Abs(targetX) < 1f && Mathf.Abs(centerY) < 1f)
-                return;
-
-            _containerRect.position = new Vector3(targetX, centerY, 0f);
-            _containerRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
-
-            if (!_container!.activeSelf)
-                _container.SetActive(true);
         }
 
         private static void CreateButton(string label, SortMode mode, string group)
@@ -269,7 +198,7 @@ namespace CraftSort
 
             var station = Player.m_localPlayer?.GetCurrentCraftingStation();
             bool isCauldron = station != null &&
-                station.m_name.IndexOf("cauldron", StringComparison.OrdinalIgnoreCase) >= 0;
+                station.gameObject.name.IndexOf("cauldron", System.StringComparison.OrdinalIgnoreCase) >= 0;
 
             foreach (Transform child in _container.transform)
             {
@@ -301,8 +230,6 @@ namespace CraftSort
                 UnityEngine.Object.Destroy(_container);
 
             _container = null;
-            _containerRect = null;
-            _panelRect = null;
             _buttons.Clear();
             _roundedSprite = null;
             _borderSprite = null;
