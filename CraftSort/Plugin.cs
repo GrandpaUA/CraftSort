@@ -13,7 +13,8 @@ namespace CraftSort
         private ConfigEntry<string> _defaultSortMode = null!;
         private ConfigEntry<bool> _rememberLastMode = null!;
 
-        public static bool Enabled => Instance._enabled.Value;
+        private static bool _cachedEnabled;
+        public static bool Enabled => _cachedEnabled;
         public static string DefaultSortMode => Instance._defaultSortMode.Value;
         public static bool RememberLastMode => Instance._rememberLastMode.Value;
 
@@ -27,8 +28,14 @@ namespace CraftSort
             _defaultSortMode = Config.Bind("General", "DefaultSortMode", "None", "Sort mode on open: None/Armor/Block/PhysDmg/etc");
             _rememberLastMode = Config.Bind("General", "RememberLastMode", false, "Keep last sort mode between station openings");
 
-            if (!Enabled)
+            _cachedEnabled = _enabled.Value;
+            _enabled.SettingChanged += (_, _) => _cachedEnabled = _enabled.Value;
+
+            if (!_cachedEnabled)
                 return;
+
+            if (System.Enum.TryParse<SortMode>(_defaultSortMode.Value, true, out var defaultMode))
+                SortLogic.CurrentMode = defaultMode;
 
             new Harmony("dev.craftsort").PatchAll();
             Logger.LogInfo("CraftSort loaded");

@@ -9,10 +9,15 @@ namespace CraftSort
     public static class TabUI
     {
         private static GameObject? _container;
-        private static readonly List<(Button btn, SortMode mode)> _buttons = new List<(Button, SortMode)>();
+        private static readonly List<(Button btn, Image img, Image border, SortMode mode)> _buttons
+            = new List<(Button, Image, Image, SortMode)>();
+        private static readonly List<GameObject> _foodButtons = new List<GameObject>();
+        private static readonly List<GameObject> _combatButtons = new List<GameObject>();
+        private static readonly List<GameObject> _alwaysButtons = new List<GameObject>();
         private static MethodInfo? _updateCraftingPanel;
         private static Sprite? _roundedSprite;
         private static Sprite? _borderSprite;
+        private static Font? _cachedFont;
 
         private static readonly Color NormalBg   = new Color(0.15f, 0.10f, 0.05f, 0.85f);
         private static readonly Color HoverBg    = new Color(0.30f, 0.22f, 0.08f, 0.95f);
@@ -46,6 +51,15 @@ namespace CraftSort
 
             _roundedSprite = CreateRoundedSprite(32, 32, CornerRadius);
             _borderSprite = CreateRoundedBorderSprite(32, 32, CornerRadius, BorderThickness);
+
+            _cachedFont = null;
+            if (InventoryGui.instance != null)
+            {
+                var existingText = InventoryGui.instance.GetComponentInChildren<Text>();
+                if (existingText != null)
+                    _cachedFont = existingText.font;
+            }
+            _cachedFont ??= Resources.GetBuiltinResource<Font>("Arial.ttf");
 
             _container = new GameObject("CraftSortTabContainer");
             _container.transform.SetParent(panel, false);
@@ -141,14 +155,7 @@ namespace CraftSort
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
 
-            Font? font = null;
-            if (InventoryGui.instance != null)
-            {
-                var existingText = InventoryGui.instance.GetComponentInChildren<Text>();
-                if (existingText != null)
-                    font = existingText.font;
-            }
-            text.font = font ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.font = _cachedFont ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
 
             var borderGo = new GameObject("Border");
             borderGo.transform.SetParent(go.transform, false);
@@ -170,26 +177,41 @@ namespace CraftSort
             var capturedMode = mode;
             btn.onClick.AddListener(() =>
             {
-                SortLogic.CurrentMode = capturedMode;
+                SortLogic.CurrentMode = SortLogic.CurrentMode == capturedMode
+                    ? SortMode.None
+                    : capturedMode;
                 UpdateButtonStates();
                 InvokeUpdateCraftingPanel();
             });
 
-            _buttons.Add((btn, mode));
+            _buttons.Add((btn, img, borderImg, mode));
+
+            if (group == "_food_") _foodButtons.Add(go);
+            else if (group == "_combat_") _combatButtons.Add(go);
+            else _alwaysButtons.Add(go);
         }
+
+        private static SortMode _lastActiveMode = (SortMode)(-1);
 
         private static void UpdateButtonStates()
         {
-            foreach (var (btn, mode) in _buttons)
+            bool fullUpdate = _lastActiveMode == (SortMode)(-1);
+            if (!fullUpdate && _lastActiveMode == SortLogic.CurrentMode) return;
+
+            for (int i = 0; i < _buttons.Count; i++)
             {
+                var (btn, img, border, mode) = _buttons[i];
                 if (btn == null) continue;
 
-                bool active = mode == SortLogic.CurrentMode;
-
-                var border = btn.transform.Find("Border")?.gameObject;
-                if (border != null)
-                    border.SetActive(active);
+                if (fullUpdate || mode == _lastActiveMode || mode == SortLogic.CurrentMode)
+                {
+                    bool active = mode == SortLogic.CurrentMode;
+                    if (border != null)
+                        border.gameObject.SetActive(active);
+                }
             }
+
+            _lastActiveMode = SortLogic.CurrentMode;
         }
 
         private static void UpdateGroupVisibility()
@@ -197,19 +219,20 @@ namespace CraftSort
             if (_container == null) return;
 
             var station = Player.m_localPlayer?.GetCurrentCraftingStation();
-            bool isCauldron = station != null &&
-                station.gameObject.name.IndexOf("cauldron", System.StringComparison.OrdinalIgnoreCase) >= 0;
-
-            foreach (Transform child in _container.transform)
+            bool isFoodStation = false;
+            if (station != null)
             {
-                string n = child.name;
-                if (n.Contains("_food_"))
-                    child.gameObject.SetActive(isCauldron);
-                if (n.Contains("_combat_"))
-                    child.gameObject.SetActive(!isCauldron);
-                if (n.Contains("_always_"))
-                    child.gameObject.SetActive(true);
+                string name = station.gameObject.name;
+                isFoodStation = name.IndexOf("cauldron", System.StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("preptable", System.StringComparison.OrdinalIgnoreCase) >= 0;
             }
+
+            for (int i = 0; i < _foodButtons.Count; i++)
+                _foodButtons[i].SetActive(isFoodStation);
+            for (int i = 0; i < _combatButtons.Count; i++)
+                _combatButtons[i].SetActive(!isFoodStation);
+            for (int i = 0; i < _alwaysButtons.Count; i++)
+                _alwaysButtons[i].SetActive(true);
         }
 
         private static void InvokeUpdateCraftingPanel()
@@ -217,11 +240,37 @@ namespace CraftSort
             var gui = InventoryGui.instance;
             if (gui == null) return;
 
-            _updateCraftingPanel ??= typeof(InventoryGui).GetMethod(
-                "UpdateCraftingPanel",
-                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_updateCraftingPanel == null)
+            {
+                _updateCraftingPanel = typeof(InventoryGui).GetMethod(
+                    "UpdateCraftingPanel",
+                    BindingFlags.NonPublic | BindingFlags.Instance,
+                    null,
+                    new System.Type[] { typeof(bool) },
+                    null);
 
-            _updateCraftingPanel?.Invoke(gui, new object[] { false });
+                if (_updateCraftingPanel == null)
+                {
+                    _updateCraftingPanel = typeof(InventoryGui).GetMethod(
+                        "UpdateCraftingPanel",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+                }
+
+                if (_updateCraftingPanel == null)
+                {
+                    CraftSortPlugin.Log("[TabUI] ERROR: UpdateCraftingPanel method not found via reflection");
+                    return;
+                }
+            }
+
+            try
+            {
+                _updateCraftingPanel.Invoke(gui, new object[] { false });
+            }
+            catch (System.Exception ex)
+            {
+                CraftSortPlugin.Log($"[TabUI] InvokeUpdateCraftingPanel error: {ex.InnerException?.Message ?? ex.Message}");
+            }
         }
 
         public static void Reset()
@@ -231,8 +280,12 @@ namespace CraftSort
 
             _container = null;
             _buttons.Clear();
+            _foodButtons.Clear();
+            _combatButtons.Clear();
+            _alwaysButtons.Clear();
             _roundedSprite = null;
             _borderSprite = null;
+            _lastActiveMode = (SortMode)(-1);
         }
 
         private static Sprite CreateRoundedSprite(int width, int height, int radius)

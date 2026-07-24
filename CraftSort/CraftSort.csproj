@@ -66,7 +66,7 @@
 
   <!-- Автокопіювання DLL в BepInEx/plugins після збірки -->
   <PropertyGroup>
-    <R2ProfilePath>$(APPDATA)\r2modmanPlus-local\Valheim\profiles\Gun world\BepInEx</R2ProfilePath>
+    <R2ProfilePath>$(APPDATA)\r2modmanPlus-local\Valheim\profiles\Craft\BepInEx</R2ProfilePath>
   </PropertyGroup>
 
   <Target Name="DeployToBepInEx" AfterTargets="Build">
