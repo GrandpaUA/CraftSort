@@ -72,7 +72,7 @@ Requires .NET 8 SDK. Output: `CraftSort/bin/Debug/net48/CraftSort.dll`
 
 Found a bug, have an idea, or want to request compatibility with another mod? Reach out:
 
-- **Discord:** `@mr_grandpa_oldman`
+- **Discord:** [@mr_grandpa_oldman](https://discord.gg/29J7ygQ8R3)
 - **Telegram:** [@mr_grandpa_oldman](https://t.me/mr_grandpa_oldman)
 
 ---
