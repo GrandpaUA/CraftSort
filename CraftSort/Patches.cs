@@ -253,6 +253,7 @@ namespace CraftSort
         private static FieldInfo? _pageField;
         private static MethodInfo? _getPerPageMethod;
         private static readonly List<Recipe> _filteredCache = new List<Recipe>();
+        private static readonly List<Recipe> _emptyList = new List<Recipe>();
 
         [HarmonyPrepare]
         static bool Prepare()
@@ -298,7 +299,7 @@ namespace CraftSort
 
                 int offset = (page - 1) * perPage;
                 int count = System.Math.Min(perPage, _filteredCache.Count - offset);
-                if (count <= 0) { recipes = new List<Recipe>(); return; }
+                if (count <= 0) { recipes = _emptyList; return; }
                 recipes = _filteredCache.GetRange(offset, count);
                 return;
             }
@@ -322,41 +323,17 @@ namespace CraftSort
         {
             try
             {
-                var cacheType = System.Type.GetType("AzuAntiArthriticCrafting.Patches.RecipeListPerfCache, AzuAntiArthriticCrafting");
-                if (cacheType == null)
-                {
-                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        cacheType = asm.GetType("AzuAntiArthriticCrafting.Patches.RecipeListPerfCache");
-                        if (cacheType != null) break;
-                    }
-                }
+                var cacheType = FindType("AzuAntiArthriticCrafting.Patches.RecipeListPerfCache");
                 if (cacheType != null)
                     _cacheField = cacheType.GetField("CraftSortedFiltered",
                         BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
 
-                var paginatorType = System.Type.GetType("AzuAntiArthriticCrafting.Patches.PaginatorPatches, AzuAntiArthriticCrafting");
-                if (paginatorType == null)
-                {
-                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        paginatorType = asm.GetType("AzuAntiArthriticCrafting.Patches.PaginatorPatches");
-                        if (paginatorType != null) break;
-                    }
-                }
+                var paginatorType = FindType("AzuAntiArthriticCrafting.Patches.PaginatorPatches");
                 if (paginatorType != null)
                     _pageField = paginatorType.GetField("CraftingWindowPage",
                         BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
 
-                var utilsType = System.Type.GetType("AzuAntiArthriticCrafting.Utilities.Utilities, AzuAntiArthriticCrafting");
-                if (utilsType == null)
-                {
-                    foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        utilsType = asm.GetType("AzuAntiArthriticCrafting.Utilities.Utilities");
-                        if (utilsType != null) break;
-                    }
-                }
+                var utilsType = FindType("AzuAntiArthriticCrafting.Utilities.Utilities");
                 if (utilsType != null)
                     _getPerPageMethod = utilsType.GetMethod("GetPerPage",
                         BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
@@ -367,6 +344,18 @@ namespace CraftSort
             {
                 CraftSortPlugin.Log($"[CraftSort] AAA Crafting compat error: {ex.Message}");
             }
+        }
+
+        private static System.Type? FindType(string fullName)
+        {
+            var type = System.Type.GetType($"{fullName}, AzuAntiArthriticCrafting");
+            if (type != null) return type;
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = asm.GetType(fullName);
+                if (type != null) return type;
+            }
+            return null;
         }
     }
 

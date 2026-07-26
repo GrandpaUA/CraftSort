@@ -28,6 +28,7 @@ namespace CraftSort
         private static float[] _valueCache = System.Array.Empty<float>();
         private static int[] _indexCache = System.Array.Empty<int>();
         private static string[] _nameCache = System.Array.Empty<string>();
+        private static Recipe?[] _recipeCache = System.Array.Empty<Recipe?>();
 
         public static float[] GetValueCache() => _valueCache;
         public static int[] GetIndexCache() => _indexCache;
@@ -108,8 +109,6 @@ namespace CraftSort
                 _nameCache = new string[count];
             }
         }
-
-        private static Recipe?[] _recipeCache = System.Array.Empty<Recipe?>();
 
         /// <summary>
         /// Sorts a List&lt;Recipe&gt; in-place by CurrentMode.

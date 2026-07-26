@@ -2,12 +2,20 @@
 
 Sorts crafting station recipes by item stats — revival of the deprecated SortCraft mod.
 
-Adds sort tab buttons to the left side of the crafting panel. Click a button to sort recipes by that stat (descending). Click again to toggle off.
+Adds sort tab buttons to the left side of the crafting panel. Click a button to sort recipes by that stat (descending). Click again to toggle off. Hover for tooltip.
+
+## Features
+
+- **15 sort modes** with icon buttons (food stations show 6, combat stations show 12 in a 2×6 grid)
+- **New recipe indicator** — blue dot on recipes you haven't viewed yet, with a "New" filter tab
+- **Per-character persistence** — viewed recipes tracked per save file
+- **AAA Crafting compatible** — global sort across paginated pages
+- **Tooltips** on hover for every button
 
 ## Sort Modes
 
-| Button | Sorts by | Relevant items first |
-|--------|----------|---------------------|
+| Icon | Sorts by | Relevant items first |
+|------|----------|---------------------|
 | All | Default order (no sort) | — |
 | Armor | `m_armor` | Helmet, Chest, Legs, Shoulder |
 | Block | `m_blockPower` | Shield |
@@ -22,10 +30,19 @@ Adds sort tab buttons to the left side of the crafting panel. Click a button to 
 | Stam | Food stamina | Consumable |
 | Eitr | Food eitr | Consumable |
 | A→Z | Localized name | — |
+| New | Unviewed recipes only | — |
 
-**Food tabs** (HP, Stam, Eitr) appear at cauldrons and food prep tables.
-**Combat tabs** (Armor, Block, Phys, etc.) appear at all other stations.
-**A→Z** appears everywhere.
+**Food tabs** (HP, Stam, Eitr) appear at cauldrons and food prep tables (single column).
+**Combat tabs** (Armor, Block, Phys, etc.) appear at all other stations (2 columns × 6 rows).
+**A→Z** and **New** appear everywhere.
+
+## New Recipe Indicator
+
+When you discover a new material that unlocks recipes, those recipes get a **blue dot** next to their icon. The dot stays until you click on the recipe to view it. Tracked per character and persisted across game sessions.
+
+The **New** tab filters the list to show only unviewed recipes, with a count badge (e.g. "New (3)").
+
+On first mod install, all currently known recipes are marked as viewed — only recipes discovered *after* installation get the indicator.
 
 ## Installation
 
@@ -46,7 +63,7 @@ Edit `BepInEx/config/dev.craftsort.cfg`:
 # Default value: true
 Enabled = true
 
-## Sort mode on open: None/Armor/Block/PhysDmg/ChopDmg/FireDmg/FrostDmg/LightningDmg/PoisonDmg/SpiritDmg/Health/Stamina/Eitr/Name
+## Sort mode on open: None/Armor/Block/PhysDmg/ChopDmg/FireDmg/FrostDmg/LightningDmg/PoisonDmg/SpiritDmg/Health/Stamina/Eitr/Name/New
 # Setting type: String
 # Default value: None
 DefaultSortMode = None
@@ -62,30 +79,20 @@ RememberLastMode = false
 Tested with Valheim 0.221.13 (Unity 6 engine).
 
 **Compatible mods** (verified via Harmony patch ordering):
-- VNEI
-- Jewelcrafting
-- Recycle N Reclaim
-- AAA_Crafting
-- CraftingFilter
-- CraftingSearchBar
-- MyLittleUI
-- SortedMenus
-- BetterArchery
-- EpicLoot
-- PlantEverything
+- VNEI, Jewelcrafting, Recycle N Reclaim, AAA_Crafting
+- CraftingFilter, CraftingSearchBar, MyLittleUI, SortedMenus
+- BetterArchery, EpicLoot, PlantEverything
 
 **Known incompatibility:**
-- InventorySlots — completely replaces the crafting UI, making CraftSort's buttons invisible. Use one or the other.
+- InventorySlots — completely replaces the crafting UI, hiding CraftSort's buttons.
 
 ## How It Works
 
-CraftSort uses a 3-layer sorting approach for maximum compatibility:
+CraftSort uses a **Transpiler** on `InventoryGui.UpdateRecipeList` that injects a sort call right before vanilla's positioning for-loop. This ensures vanilla positions recipe elements in our sorted order — no manual repositioning needed.
 
-1. **List sort** — sorts the recipe list in `GetAvailableRecipes` Postfix
-2. **Weight injection** — sets `Recipe.m_listSortWeight` so vanilla's own sort respects our order
-3. **UI re-sort** — Postfix on `UpdateRecipeList` re-sorts `m_availableRecipes` and repositions UI elements (runs last via `Priority.Last` + `HarmonyAfter`)
+For AAA Crafting compatibility, a separate Prefix sorts the full `RecipeListPerfCache.CraftSortedFiltered` before pagination slices it.
 
-Craftable items always appear first (vanilla behavior preserved).
+The blue dot indicator uses a Postfix on `UpdateRecipeList` to add/remove dot overlays on recipe icons, and a Postfix on `OnSelectedRecipe` to mark recipes as viewed on click.
 
 ## Building from Source
 
@@ -103,4 +110,4 @@ Output: `CraftSort/bin/Debug/net48/CraftSort.dll`
 
 ## License
 
-MIT
+AGPL-3.0
