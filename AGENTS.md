@@ -67,7 +67,7 @@ Assembly references:
     ├── Plugin.cs          BepInEx entry point, config, Harmony bootstrap
     ├── SortLogic.cs       SortMode enum, GetSortValue, index-based sort with pre-allocated caches
     ├── Patches.cs         Transpiler + AAA compat + NewDots + OnSelectedRecipe + Hide cleanup
-    ├── TabUI.cs           Dual-container UI (food VerticalLayout + combat GridLayout), tooltips
+    ├── TabUI.cs           Dual-container UI (food VerticalLayout + combat GridLayout), station auto-detection
     ├── NewRecipeTracker.cs Per-character persistence, blue dot management
     ├── IconFactory.cs     Loads RGBA from IconData, caches sprites via LoadRawTextureData
     └── IconData.cs        Auto-generated — 15 base64 RGBA strings (64×64 icons)
@@ -99,9 +99,13 @@ Assembly references:
 - Food container: `VerticalLayoutGroup` (single column, 50×50 buttons)
 - Combat container: `GridLayoutGroup` (2 columns × 6 rows, 50×50 buttons)
 - `ContentSizeFitter` on both for auto-height
-- `UpdateGroupVisibility()` shows/hides containers based on station name (cauldron/preptable = food)
+- `UpdateGroupVisibility()` shows/hides containers via three-layer food station detection:
+  1. Check `m_availableRecipes` in UI (already filtered by vanilla for current station)
+  2. Check `ObjectDB.instance.m_recipes` matching station prefab name (handles "(Clone)" suffix)
+  3. Fallback to known vanilla names (cauldron/preptable)
+  - `IsFoodItem()`: ItemType==Consumable && (m_food>0 || m_foodStamina>0 || m_foodEitr>0)
+  - Result cached per station name, invalidated on `Reset()`
 - Each button: rounded rect background + icon (34px) or text fallback + yellow border (5px) when active
-- Tooltips via `EventTrigger` (PointerEnter/PointerExit)
 
 ### Icon system
 - 15 icons from flaticon.com, processed via `_research/gen_icondata.ps1`:

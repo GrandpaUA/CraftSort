@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace CraftSort
@@ -20,6 +19,8 @@ namespace CraftSort
         private static Sprite? _borderSprite;
         private static Font? _cachedFont;
         private static SortMode _lastActiveMode = (SortMode)(-1);
+        private static string? _cachedStationKey;
+        private static bool _cachedIsFoodStation;
 
         private static readonly Color NormalBg   = new Color(0.08f, 0.05f, 0.02f, 0.95f);
         private static readonly Color HoverBg    = new Color(0.18f, 0.13f, 0.05f, 0.97f);
@@ -34,25 +35,6 @@ namespace CraftSort
         private const int CornerRadius = 4;
         private const int BorderThickness = 5;
         private const float IconSize = 34f;
-
-        private static readonly Dictionary<SortMode, string> Tooltips = new Dictionary<SortMode, string>
-        {
-            { SortMode.None,        "All recipes" },
-            { SortMode.Armor,       "Sort by armor" },
-            { SortMode.Block,       "Sort by block power" },
-            { SortMode.PhysDmg,     "Sort by physical damage" },
-            { SortMode.FireDmg,     "Sort by fire damage" },
-            { SortMode.FrostDmg,    "Sort by frost damage" },
-            { SortMode.LightningDmg,"Sort by lightning damage" },
-            { SortMode.PoisonDmg,   "Sort by poison damage" },
-            { SortMode.SpiritDmg,   "Sort by spirit damage" },
-            { SortMode.ChopDmg,     "Sort by chop damage" },
-            { SortMode.Health,      "Sort by health" },
-            { SortMode.Stamina,     "Sort by stamina" },
-            { SortMode.Eitr,        "Sort by eitr" },
-            { SortMode.Name,        "Sort by name" },
-            { SortMode.New,         "New recipes only" },
-        };
 
         public static void EnsureTabsExist(InventoryGui gui)
         {
@@ -240,8 +222,6 @@ namespace CraftSort
             borderImg.raycastTarget = false;
             borderGo.SetActive(false);
 
-            CreateTooltip(go, mode);
-
             var capturedMode = mode;
             btn.onClick.AddListener(() =>
             {
@@ -253,60 +233,6 @@ namespace CraftSort
             });
 
             _buttons.Add((btn, img, borderImg, mode));
-        }
-
-        private static void CreateTooltip(GameObject button, SortMode mode)
-        {
-            if (!Tooltips.TryGetValue(mode, out string tip) || string.IsNullOrEmpty(tip))
-                return;
-
-            var tipGo = new GameObject("Tooltip");
-            tipGo.transform.SetParent(button.transform, false);
-
-            var tipRt = tipGo.AddComponent<RectTransform>();
-            tipRt.anchorMin = new Vector2(1f, 0.5f);
-            tipRt.anchorMax = new Vector2(1f, 0.5f);
-            tipRt.pivot = new Vector2(0f, 0.5f);
-            tipRt.anchoredPosition = new Vector2(6f, 0f);
-            tipRt.sizeDelta = new Vector2(0f, 20f);
-
-            var tipImg = tipGo.AddComponent<Image>();
-            tipImg.color = new Color(0.05f, 0.03f, 0.01f, 0.92f);
-            tipImg.raycastTarget = false;
-
-            var textGo = new GameObject("Text");
-            textGo.transform.SetParent(tipGo.transform, false);
-
-            var textRt = textGo.AddComponent<RectTransform>();
-            textRt.anchorMin = Vector2.zero;
-            textRt.anchorMax = Vector2.one;
-            textRt.offsetMin = new Vector2(6f, 2f);
-            textRt.offsetMax = new Vector2(-6f, -2f);
-
-            var text = textGo.AddComponent<Text>();
-            text.text = tip;
-            text.color = new Color(0.9f, 0.85f, 0.7f, 1f);
-            text.fontSize = 10;
-            text.fontStyle = FontStyle.Normal;
-            text.alignment = TextAnchor.MiddleLeft;
-            text.font = _cachedFont ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
-            text.raycastTarget = false;
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
-
-            var fitter = tipGo.AddComponent<ContentSizeFitter>();
-            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            tipGo.SetActive(false);
-
-            var trigger = button.AddComponent<EventTrigger>();
-
-            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-            enter.callback.AddListener(_ => tipGo.SetActive(true));
-            trigger.triggers.Add(enter);
-
-            var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-            exit.callback.AddListener(_ => tipGo.SetActive(false));
-            trigger.triggers.Add(exit);
         }
 
         private static void UpdateButtonStates()
@@ -335,16 +261,101 @@ namespace CraftSort
         private static void UpdateGroupVisibility()
         {
             var station = Player.m_localPlayer?.GetCurrentCraftingStation();
-            bool isFoodStation = false;
-            if (station != null)
+            string? stationKey = station != null ? station.gameObject.name : null;
+
+            bool isFoodStation;
+            if (stationKey == _cachedStationKey)
             {
-                string name = station.gameObject.name;
-                isFoodStation = name.IndexOf("cauldron", StringComparison.OrdinalIgnoreCase) >= 0
-                    || name.IndexOf("preptable", StringComparison.OrdinalIgnoreCase) >= 0;
+                isFoodStation = _cachedIsFoodStation;
+            }
+            else
+            {
+                isFoodStation = DetectFoodStation(station);
+                _cachedStationKey = stationKey;
+                _cachedIsFoodStation = isFoodStation;
+                CraftSortPlugin.Log($"[CraftSort] Station '{stationKey}' → {(isFoodStation ? "food" : "combat")} UI");
             }
 
             if (_foodContainer != null) _foodContainer.SetActive(isFoodStation);
             if (_combatContainer != null) _combatContainer.SetActive(!isFoodStation);
+        }
+
+        /// <summary>
+        /// Three-layer food station detection that works with any mod:
+        /// 1. Check recipes currently displayed in the UI (already filtered by vanilla for this station)
+        /// 2. Check all ObjectDB recipes that reference this station prefab
+        /// 3. Fallback to known vanilla station names
+        /// </summary>
+        private static bool DetectFoodStation(CraftingStation? station)
+        {
+            if (station == null) return false;
+
+            // Layer 1: recipes currently shown in the crafting panel
+            var gui = InventoryGui.instance;
+            if (gui != null)
+            {
+                var list = Patch_UpdateRecipeList.GetAvailableRecipesList(gui);
+                if (list != null && list.Count > 0)
+                {
+                    int foodCount = 0;
+                    int totalCount = 0;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var recipe = Patch_UpdateRecipeList.GetRecipeFromPair(list[i]);
+                        var shared = recipe?.m_item?.m_itemData?.m_shared;
+                        if (shared == null) continue;
+                        totalCount++;
+                        if (IsFoodItem(shared)) foodCount++;
+                    }
+                    if (totalCount > 0)
+                        return foodCount > 0;
+                }
+            }
+
+            // Layer 2: all recipes in ObjectDB that belong to this station
+            var db = ObjectDB.instance;
+            if (db != null && db.m_recipes != null)
+            {
+                string stationPrefab = GetPrefabName(station.gameObject);
+                int foodCount = 0;
+                int totalCount = 0;
+
+                for (int i = 0; i < db.m_recipes.Count; i++)
+                {
+                    var recipe = db.m_recipes[i];
+                    if (recipe == null || recipe.m_craftingStation == null) continue;
+                    if (GetPrefabName(recipe.m_craftingStation.gameObject) != stationPrefab) continue;
+
+                    var shared = recipe.m_item?.m_itemData?.m_shared;
+                    if (shared == null) continue;
+
+                    totalCount++;
+                    if (IsFoodItem(shared)) foodCount++;
+                }
+
+                if (totalCount > 0)
+                    return foodCount > 0;
+            }
+
+            // Layer 3: fallback — known vanilla food station names
+            string name = station.gameObject.name;
+            return name.IndexOf("cauldron", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("preptable", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsFoodItem(ItemDrop.ItemData.SharedData shared)
+        {
+            return (int)shared.m_itemType == 2
+                && (shared.m_food > 0f || shared.m_foodStamina > 0f || shared.m_foodEitr > 0f);
+        }
+
+        private static string GetPrefabName(GameObject go)
+        {
+            string name = go.name;
+            const string cloneSuffix = "(Clone)";
+            if (name.EndsWith(cloneSuffix))
+                return name.Substring(0, name.Length - cloneSuffix.Length);
+            return name;
         }
 
         private static void InvokeUpdateCraftingPanel()
@@ -409,6 +420,7 @@ namespace CraftSort
             _roundedSprite = null;
             _borderSprite = null;
             _lastActiveMode = (SortMode)(-1);
+            _cachedStationKey = null;
         }
 
         private static Sprite CreateRoundedSprite(int width, int height, int radius)

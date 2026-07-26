@@ -2,7 +2,7 @@
 
 Sorts crafting station recipes by item stats — revival of the deprecated SortCraft mod.
 
-Adds sort tab buttons to the left side of the crafting panel. Click a button to sort recipes by that stat (descending). Click again to toggle off. Hover for tooltip.
+Adds sort tab buttons to the left side of the crafting panel. Click a button to sort recipes by that stat (descending). Click again to toggle off.
 
 ## Features
 
@@ -10,7 +10,6 @@ Adds sort tab buttons to the left side of the crafting panel. Click a button to 
 - **New recipe indicator** — blue dot on recipes you haven't viewed yet, with a "New" filter tab
 - **Per-character persistence** — viewed recipes tracked per save file
 - **AAA Crafting compatible** — global sort across paginated pages
-- **Tooltips** on hover for every button
 
 ## Sort Modes
 
@@ -32,7 +31,7 @@ Adds sort tab buttons to the left side of the crafting panel. Click a button to 
 | A→Z | Localized name | — |
 | New | Unviewed recipes only | — |
 
-**Food tabs** (HP, Stam, Eitr) appear at cauldrons and food prep tables (single column).
+**Food tabs** (HP, Stam, Eitr) appear at stations with food recipes — auto-detected from recipe content, works with modded stations.
 **Combat tabs** (Armor, Block, Phys, etc.) appear at all other stations (2 columns × 6 rows).
 **A→Z** and **New** appear everywhere.
 
