@@ -434,3 +434,6 @@ FodyWeavers.xsd
 # Research artifacts
 _research/
 decompiled/
+
+# Thunderstore package build
+thunderstore/
