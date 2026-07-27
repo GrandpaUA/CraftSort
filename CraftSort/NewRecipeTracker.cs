@@ -161,7 +161,7 @@ namespace CraftSort
 
                 var img = dotGo.AddComponent<Image>();
                 img.sprite = _dotSprite;
-                img.color = new Color(0.25f, 0.55f, 1f, 1f);
+                img.color = new Color(1f, 0.82f, 0.15f, 1f);
                 img.raycastTarget = false;
             }
             else if (existing != null)

@@ -28,6 +28,7 @@ namespace CraftSort
         };
 
         private static readonly Dictionary<SortMode, Sprite> _cache = new Dictionary<SortMode, Sprite>();
+        private static readonly Dictionary<string, Sprite> _keyCache = new Dictionary<string, Sprite>();
 
         public static Sprite? GetIcon(SortMode mode)
         {
@@ -36,6 +37,17 @@ namespace CraftSort
 
             if (!ModeToKey.TryGetValue(mode, out string key))
                 return null;
+
+            var sprite = GetIconByKey(key);
+            if (sprite != null)
+                _cache[mode] = sprite;
+            return sprite;
+        }
+
+        public static Sprite? GetIconByKey(string key)
+        {
+            if (_keyCache.TryGetValue(key, out var cached))
+                return cached;
 
             if (!IconData.Raw.TryGetValue(key, out string b64))
                 return null;
@@ -51,7 +63,7 @@ namespace CraftSort
             var sprite = Sprite.Create(tex, new Rect(0, 0, size, size),
                 new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
 
-            _cache[mode] = sprite;
+            _keyCache[key] = sprite;
             return sprite;
         }
     }

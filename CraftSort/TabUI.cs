@@ -14,6 +14,12 @@ namespace CraftSort
         private Vector2 _startPos;
         private Vector2 _startPointer;
         private bool _dragging;
+        private System.Action<Vector2>? _onPositionSaved;
+
+        public void SetPositionCallback(System.Action<Vector2> callback)
+        {
+            _onPositionSaved = callback;
+        }
 
         public void OnBeginDrag(PointerEventData eventData)
         {
@@ -38,7 +44,7 @@ namespace CraftSort
         {
             if (!_dragging || _container == null) return;
             _dragging = false;
-            TabUI.SavePosition(_container.anchoredPosition);
+            _onPositionSaved?.Invoke(_container.anchoredPosition);
         }
     }
 
@@ -48,30 +54,50 @@ namespace CraftSort
     {
         private RectTransform _target = null!;
         private GridLayoutGroup? _grid;
-        private Image? _image;
+        private Image? _bgImg;
+        private Image? _iconImg;
+        private System.Action<float>? _onWidthSaved;
         private Vector2 _lastPointer;
         private Vector2 _originalPivot;
-        private static readonly Color Invisible = new Color(1f, 0.82f, 0.15f, 0f);
-        private static readonly Color HoverCol = new Color(1f, 0.82f, 0.15f, 0.5f);
-        private static readonly Color ActiveCol = new Color(1f, 0.82f, 0.15f, 1.0f);
+        private static readonly Color BgInvisible = new Color(0.1f, 0.08f, 0.05f, 0f);
+        private static readonly Color BgHover     = new Color(0.1f, 0.08f, 0.05f, 0.7f);
+        private static readonly Color BgActive    = new Color(0.1f, 0.08f, 0.05f, 0.9f);
+        private static readonly Color IconInvisible = new Color(1f, 0.82f, 0.15f, 0f);
+        private static readonly Color IconHover     = new Color(1f, 0.82f, 0.15f, 0.6f);
+        private static readonly Color IconActive    = new Color(1f, 0.82f, 0.15f, 1.0f);
 
-        public void Setup(RectTransform target, Image img)
+        public void Setup(RectTransform target, Image bgImg, Image iconImg, System.Action<float>? onWidthSaved = null)
         {
             _target = target;
             _grid = target.GetComponent<GridLayoutGroup>();
-            _image = img;
+            _bgImg = bgImg;
+            _iconImg = iconImg;
+            _onWidthSaved = onWidthSaved;
+        }
+
+        public void SetVisuals(bool editMode)
+        {
+            if (_bgImg != null)
+                _bgImg.color = editMode ? BgActive : BgInvisible;
+            if (_iconImg != null)
+                _iconImg.color = editMode ? IconActive : IconInvisible;
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (_image != null)
-                _image.color = TabUI.EditMode ? ActiveCol : HoverCol;
+            if (_bgImg != null)
+                _bgImg.color = TabUI.EditMode ? BgActive : BgHover;
+            if (_iconImg != null)
+                _iconImg.color = TabUI.EditMode ? IconActive : IconHover;
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (_image != null && !TabUI.EditMode)
-                _image.color = Invisible;
+            if (!TabUI.EditMode)
+            {
+                if (_bgImg != null) _bgImg.color = BgInvisible;
+                if (_iconImg != null) _iconImg.color = IconInvisible;
+            }
         }
 
         public void OnPointerClick(PointerEventData eventData)
@@ -97,11 +123,13 @@ namespace CraftSort
             _target.sizeDelta = new Vector2(newWidth, _target.sizeDelta.y);
             _lastPointer = eventData.position;
 
+            int cols = 1;
             if (_grid != null)
             {
                 float cell = _grid.cellSize.x;
                 float spacing = _grid.spacing.x;
-                _grid.constraintCount = Mathf.Max(1, Mathf.FloorToInt((newWidth + spacing) / (cell + spacing)));
+                cols = Mathf.Max(1, Mathf.FloorToInt((newWidth + spacing) / (cell + spacing)));
+                _grid.constraintCount = cols;
             }
         }
 
@@ -110,18 +138,20 @@ namespace CraftSort
             if (_target == null) return;
             SetPivot(_target, _originalPivot);
 
+            float snapped = _target.sizeDelta.x;
+            int cols = 1;
             if (_grid != null)
             {
                 float cell = _grid.cellSize.x;
                 float spacing = _grid.spacing.x;
                 float cellPlus = cell + spacing;
-                int cols = Mathf.Max(1, Mathf.RoundToInt(_target.sizeDelta.x / cellPlus));
-                float snapped = Mathf.Clamp(cols * cellPlus - spacing, cell, 800f);
+                cols = Mathf.Max(1, Mathf.RoundToInt(_target.sizeDelta.x / cellPlus));
+                snapped = Mathf.Clamp(cols * cellPlus - spacing, cell, 800f);
                 _target.sizeDelta = new Vector2(snapped, _target.sizeDelta.y);
                 _grid.constraintCount = cols;
             }
 
-            TabUI.SaveWidth(_target.sizeDelta.x);
+            _onWidthSaved?.Invoke(snapped);
         }
 
         private static void SetPivot(RectTransform rt, Vector2 pivot)
@@ -154,9 +184,12 @@ namespace CraftSort
         private static string? _cachedStationKey;
         private static bool _cachedIsFoodStation;
 
-        private static BepInEx.Configuration.ConfigEntry<float>? _cfgPosX;
-        private static BepInEx.Configuration.ConfigEntry<float>? _cfgPosY;
-        private static BepInEx.Configuration.ConfigEntry<float>? _cfgWidth;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgFoodPosX;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgFoodPosY;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgFoodWidth;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgCombatPosX;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgCombatPosY;
+        private static BepInEx.Configuration.ConfigEntry<float>? _cfgCombatWidth;
 
         private static readonly Color NormalBg   = new Color(0.08f, 0.05f, 0.02f, 0.95f);
         private static readonly Color HoverBg    = new Color(0.18f, 0.13f, 0.05f, 0.97f);
@@ -179,13 +212,10 @@ namespace CraftSort
 
         private static void UpdateResizeHandleVisuals()
         {
-            Color c = _editMode
-                ? new Color(1f, 0.82f, 0.15f, 1.0f)
-                : new Color(1f, 0.82f, 0.15f, 0f);
             if (_foodResizeCtrl != null)
-                _foodResizeCtrl.GetComponent<Image>().color = c;
+                _foodResizeCtrl.SetVisuals(_editMode);
             if (_combatResizeCtrl != null)
-                _combatResizeCtrl.GetComponent<Image>().color = c;
+                _combatResizeCtrl.SetVisuals(_editMode);
         }
 
         private const float ButtonSize = 50f;
@@ -197,7 +227,7 @@ namespace CraftSort
         private const int CornerRadius = 7;
         private const int BorderThickness = 5;
         private const float IconSize = 34f;
-        private const float ResizeHandleSize = 14f;
+        private const float ResizeHandleSize = 20f;
 
         public static void EnsureTabsExist(InventoryGui gui)
         {
@@ -217,24 +247,40 @@ namespace CraftSort
 
         private static void EnsureConfig()
         {
-            if (_cfgPosX != null) return;
+            if (_cfgFoodPosX != null) return;
             var cfg = CraftSortPlugin.Instance.Config;
-            _cfgPosX = cfg.Bind("UI", "PositionX", DefaultPosX, "Button panel X offset from panel left edge");
-            _cfgPosY = cfg.Bind("UI", "PositionY", DefaultPosY, "Button panel Y offset from panel top edge");
-            _cfgWidth = cfg.Bind("UI", "CombatPanelWidth", DefaultCombatWidth, "Combat button panel width (drag resize handle to change)");
+            _cfgFoodPosX = cfg.Bind("UI", "FoodPosX", DefaultPosX, "Food panel X offset");
+            _cfgFoodPosY = cfg.Bind("UI", "FoodPosY", DefaultPosY, "Food panel Y offset");
+            _cfgFoodWidth = cfg.Bind("UI", "FoodWidth", ButtonSize, "Food panel width");
+            _cfgCombatPosX = cfg.Bind("UI", "CombatPosX", DefaultPosX, "Combat panel X offset");
+            _cfgCombatPosY = cfg.Bind("UI", "CombatPosY", DefaultPosY, "Combat panel Y offset");
+            _cfgCombatWidth = cfg.Bind("UI", "CombatWidth", DefaultCombatWidth, "Combat panel width");
         }
 
-        internal static void SavePosition(Vector2 pos)
+        internal static void SaveFoodPosition(Vector2 pos)
         {
             EnsureConfig();
-            _cfgPosX!.Value = pos.x;
-            _cfgPosY!.Value = pos.y;
+            _cfgFoodPosX!.Value = pos.x;
+            _cfgFoodPosY!.Value = pos.y;
         }
 
-        internal static void SaveWidth(float width)
+        internal static void SaveCombatPosition(Vector2 pos)
         {
             EnsureConfig();
-            _cfgWidth!.Value = width;
+            _cfgCombatPosX!.Value = pos.x;
+            _cfgCombatPosY!.Value = pos.y;
+        }
+
+        internal static void SaveFoodWidth(float width)
+        {
+            EnsureConfig();
+            _cfgFoodWidth!.Value = width;
+        }
+
+        internal static void SaveCombatWidth(float width)
+        {
+            EnsureConfig();
+            _cfgCombatWidth!.Value = width;
         }
 
         private static void CreateTabs(InventoryGui gui)
@@ -254,11 +300,14 @@ namespace CraftSort
             }
             _cachedFont ??= Resources.GetBuiltinResource<Font>("Arial.ttf");
 
-            float posX = _cfgPosX!.Value;
-            float posY = _cfgPosY!.Value;
-            float combatWidth = _cfgWidth!.Value;
+            float foodPosX = _cfgFoodPosX!.Value;
+            float foodPosY = _cfgFoodPosY!.Value;
+            float foodWidth = _cfgFoodWidth!.Value;
+            float combatPosX = _cfgCombatPosX!.Value;
+            float combatPosY = _cfgCombatPosY!.Value;
+            float combatWidth = _cfgCombatWidth!.Value;
 
-            // ── Food container (single column) ──
+            // ── Food container ──
             _foodContainer = new GameObject("CraftSortFoodTabs");
             _foodContainer.transform.SetParent(panel, false);
 
@@ -266,24 +315,23 @@ namespace CraftSort
             foodRt.anchorMin = new Vector2(0f, 1f);
             foodRt.anchorMax = new Vector2(0f, 1f);
             foodRt.pivot = new Vector2(1f, 1f);
-            foodRt.anchoredPosition = new Vector2(posX, posY);
-            foodRt.sizeDelta = new Vector2(ButtonSize, 0f);
+            foodRt.anchoredPosition = new Vector2(foodPosX, foodPosY);
+            foodRt.sizeDelta = new Vector2(foodWidth, 0f);
 
-            var foodVlg = _foodContainer.AddComponent<VerticalLayoutGroup>();
-            foodVlg.spacing = GridSpacingY;
-            foodVlg.childForceExpandWidth = true;
-            foodVlg.childForceExpandHeight = false;
-            foodVlg.childControlWidth = true;
-            foodVlg.childControlHeight = true;
-            foodVlg.childAlignment = TextAnchor.UpperCenter;
-            foodVlg.padding = new RectOffset(0, 0, 0, (int)ResizeHandleSize);
+            var foodGrid = _foodContainer.AddComponent<GridLayoutGroup>();
+            foodGrid.cellSize = new Vector2(ButtonSize, ButtonSize);
+            foodGrid.spacing = new Vector2(GridSpacingX, GridSpacingY);
+            foodGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            foodGrid.constraintCount = Mathf.Max(1, Mathf.FloorToInt((foodWidth + GridSpacingX) / (ButtonSize + GridSpacingX)));
+            foodGrid.childAlignment = TextAnchor.UpperLeft;
+            foodGrid.padding = new RectOffset(0, 0, 0, (int)ResizeHandleSize);
 
             var foodFitter = _foodContainer.AddComponent<ContentSizeFitter>();
             foodFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _foodResizeCtrl = AddResizeHandle(_foodContainer, foodRt);
+            _foodResizeCtrl = AddResizeHandle(_foodContainer, foodRt, SaveFoodWidth);
 
-            // ── Combat container (grid, flexible columns) ──
+            // ── Combat container ──
             _combatContainer = new GameObject("CraftSortCombatTabs");
             _combatContainer.transform.SetParent(panel, false);
 
@@ -291,7 +339,7 @@ namespace CraftSort
             combatRt.anchorMin = new Vector2(0f, 1f);
             combatRt.anchorMax = new Vector2(0f, 1f);
             combatRt.pivot = new Vector2(1f, 1f);
-            combatRt.anchoredPosition = new Vector2(posX, posY);
+            combatRt.anchoredPosition = new Vector2(combatPosX, combatPosY);
             combatRt.sizeDelta = new Vector2(combatWidth, 0f);
 
             var combatGrid = _combatContainer.AddComponent<GridLayoutGroup>();
@@ -305,7 +353,7 @@ namespace CraftSort
             var combatFitter = _combatContainer.AddComponent<ContentSizeFitter>();
             combatFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _combatResizeCtrl = AddResizeHandle(_combatContainer, combatRt);
+            _combatResizeCtrl = AddResizeHandle(_combatContainer, combatRt, SaveCombatWidth);
 
             // ── Food buttons ──
             CreateSortButton("All", SortMode.None, "Food_All", _foodContainer.transform);
@@ -339,7 +387,7 @@ namespace CraftSort
             UpdateButtonStates();
         }
 
-        private static ResizeHandleController AddResizeHandle(GameObject container, RectTransform targetRt)
+        private static ResizeHandleController AddResizeHandle(GameObject container, RectTransform targetRt, System.Action<float>? onWidthSaved = null)
         {
             var handleGo = new GameObject("ResizeHandle");
             handleGo.transform.SetParent(container.transform, false);
@@ -351,15 +399,35 @@ namespace CraftSort
             rt.anchoredPosition = Vector2.zero;
             rt.sizeDelta = new Vector2(ResizeHandleSize, ResizeHandleSize);
 
-            var img = handleGo.AddComponent<Image>();
-            img.color = new Color(1f, 0.82f, 0.15f, 0f);
-            img.raycastTarget = true;
+            var bgImg = handleGo.AddComponent<Image>();
+            bgImg.sprite = _roundedSprite;
+            bgImg.type = Image.Type.Sliced;
+            bgImg.color = new Color(0.1f, 0.08f, 0.05f, 0f);
+            bgImg.raycastTarget = true;
+
+            var iconGo = new GameObject("Icon");
+            iconGo.transform.SetParent(handleGo.transform, false);
+            var iconRt = iconGo.AddComponent<RectTransform>();
+            iconRt.anchorMin = new Vector2(0.5f, 0.5f);
+            iconRt.anchorMax = new Vector2(0.5f, 0.5f);
+            iconRt.sizeDelta = new Vector2(ResizeHandleSize - 6f, ResizeHandleSize - 6f);
+            iconRt.anchoredPosition = Vector2.zero;
+            var iconImg = iconGo.AddComponent<Image>();
+            var resizeSprite = IconFactory.GetIconByKey("resize");
+            if (resizeSprite != null)
+            {
+                iconImg.sprite = resizeSprite;
+                iconImg.type = Image.Type.Simple;
+                iconImg.preserveAspect = true;
+            }
+            iconImg.color = new Color(1f, 0.82f, 0.15f, 0f);
+            iconImg.raycastTarget = false;
 
             var le = handleGo.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
 
             var ctrl = handleGo.AddComponent<ResizeHandleController>();
-            ctrl.Setup(targetRt, img);
+            ctrl.Setup(targetRt, bgImg, iconImg, onWidthSaved);
             return ctrl;
         }
 
@@ -386,7 +454,8 @@ namespace CraftSort
         {
             if (!CraftSortPlugin.IsButtonEnabled(configKey)) return;
 
-            var (btn, img, borderImg) = CreateButtonBase(label, SortMode.None, configKey, parent);
+            string iconKey = filter == WeaponFilter.OneHanded ? "1h" : "2h";
+            var (btn, img, borderImg) = CreateButtonBase(label, SortMode.None, configKey, parent, iconKey);
             borderImg.color = FilterBorderCol;
 
             var capturedFilter = filter;
@@ -430,8 +499,30 @@ namespace CraftSort
             colors.colorMultiplier = 1f;
             btn.colors = colors;
 
-            AddTextLabel(go, "CLR");
-            go.AddComponent<ButtonDragHandler>();
+            var cleanSprite = IconFactory.GetIconByKey("clear");
+            if (cleanSprite != null)
+            {
+                var iconGo = new GameObject("Icon");
+                iconGo.transform.SetParent(go.transform, false);
+
+                var iconRt = iconGo.AddComponent<RectTransform>();
+                iconRt.anchorMin = new Vector2(0.5f, 0.5f);
+                iconRt.anchorMax = new Vector2(0.5f, 0.5f);
+                iconRt.sizeDelta = new Vector2(IconSize, IconSize);
+                iconRt.anchoredPosition = Vector2.zero;
+
+                var iconImg = iconGo.AddComponent<Image>();
+                iconImg.sprite = cleanSprite;
+                iconImg.color = Color.white;
+                iconImg.raycastTarget = false;
+            }
+            else
+            {
+                AddTextLabel(go, "CLR");
+            }
+
+            var drag = go.AddComponent<ButtonDragHandler>();
+            drag.SetPositionCallback(parent.name == "CraftSortFoodTabs" ? SaveFoodPosition : SaveCombatPosition);
 
             btn.onClick.AddListener(() =>
             {
@@ -441,7 +532,7 @@ namespace CraftSort
             });
         }
 
-        private static (Button, Image, Image) CreateButtonBase(string label, SortMode mode, string configKey, Transform parent)
+        private static (Button, Image, Image) CreateButtonBase(string label, SortMode mode, string configKey, Transform parent, string? iconKey = null)
         {
             var go = new GameObject($"SortTab_{mode}");
             go.transform.SetParent(parent, false);
@@ -467,7 +558,7 @@ namespace CraftSort
             colors.colorMultiplier = 1f;
             btn.colors = colors;
 
-            var sprite = IconFactory.GetIcon(mode);
+            var sprite = iconKey != null ? IconFactory.GetIconByKey(iconKey) : IconFactory.GetIcon(mode);
             if (sprite != null)
             {
                 var iconGo = new GameObject("Icon");
@@ -506,7 +597,8 @@ namespace CraftSort
             borderImg.raycastTarget = false;
             borderGo.SetActive(false);
 
-            go.AddComponent<ButtonDragHandler>();
+            var drag2 = go.AddComponent<ButtonDragHandler>();
+            drag2.SetPositionCallback(parent.name == "CraftSortFoodTabs" ? SaveFoodPosition : SaveCombatPosition);
 
             return (btn, img, borderImg);
         }
