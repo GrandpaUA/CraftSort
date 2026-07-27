@@ -2,7 +2,7 @@
 
 **Sort crafting recipes by stats — one click, instant order.**
 
-Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side of every crafting station. Click to sort, click again to toggle off.
+Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side of every crafting station. Click to sort, click again to toggle off. Drag to reposition, resize to fit your screen.
 
 ![Combat station — 2-column grid](docs/2.png)
 ![Food station — single column](docs/1.png)
@@ -11,9 +11,13 @@ Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side 
 
 ## ⚡ Features
 
-- **15 sort modes** — food stations show 6 tabs, combat stations show 12 in a 2×6 grid
+- **18 sort/filter modes** — food stations show 7 tabs, combat stations show up to 17 in a flexible grid
+- **Weapon filters** — 1H / 2H toggle buttons (blue border) combine with any sort mode
 - **Auto food/combat detection** — works with any modded station by inspecting recipe content
 - **New recipe indicator** — blue dot on unviewed recipes + "New" filter tab
+- **Clean button** — marks all known recipes as viewed, clears all blue dots
+- **Drag & resize** — right-click the corner handle to enter edit mode, then drag buttons to reposition or resize the panel
+- **Per-button config** — enable/disable any button via config file
 - **Per-character persistence** — tracked per save file
 - **AAA Crafting compatible** — global sort across paginated pages
 - **Client-side only** — no server mods required
@@ -25,17 +29,27 @@ Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side 
 | All | Default order | HP | Food health |
 | Armor | Armor value | Stam | Food stamina |
 | Block | Block power | Eitr | Food eitr |
-| Phys | Blunt+Slash+Pierce | A→Z | Localized name |
-| Fire | Fire damage | New | Unviewed only |
+| Slash | Slash damage | A→Z | Localized name |
+| Pierce | Pierce damage | New | Unviewed only |
+| Blunt | Blunt damage | CLR | Mark all viewed |
+| Fire | Fire damage | | |
 | Frost | Frost damage | | |
 | Ltng | Lightning damage | | |
 | Psn | Poison damage | | |
 | Sprt | Spirit damage | | |
-| Chop | Chop damage | | |
+
+### Weapon Filters (blue border, combinable with any sort)
+
+| Button | Shows |
+|:------:|-------|
+| 1H | One-handed weapons only |
+| 2H | Two-handed weapons + bows |
 
 ## 🔧 Configuration
 
 `BepInEx/config/dev.craftsort.cfg`
+
+### General
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -43,20 +57,91 @@ Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side 
 | `DefaultSortMode` | `None` | Sort mode on panel open |
 | `RememberLastMode` | `false` | Keep last mode between stations |
 
+### Per-Button Visibility
+
+Each button can be individually enabled/disabled:
+
+```ini
+[Buttons.Food]
+Show_All = true
+Show_HP = true
+Show_Stamina = true
+Show_Eitr = true
+Show_AZ = true
+Show_New = true
+Show_Clean = true
+
+[Buttons.Combat]
+Show_All = true
+Show_Armor = true
+Show_Block = true
+Show_Slash = true
+Show_Pierce = true
+Show_Blunt = true
+Show_Fire = true
+Show_Frost = true
+Show_Lightning = true
+Show_Poison = true
+Show_Spirit = true
+Show_1H = true
+Show_2H = true
+Show_AZ = true
+Show_New = true
+Show_Clean = true
+```
+
+### UI Position & Size
+
+Persisted automatically when you drag or resize the panel:
+
+```ini
+[UI]
+PositionX = -9
+PositionY = -200
+CombatPanelWidth = 104
+```
+
+##  Drag & Resize
+
+1. **Hover** over the bottom-right corner of the button panel — a small handle appears
+2. **Right-click** the handle to enter **Edit Mode** (handle turns solid yellow)
+3. **Drag any button** to move the entire panel
+4. **Drag the corner handle** to resize (columns adjust automatically)
+5. **Right-click** the handle again to exit Edit Mode
+
+## 🎮 Console Command
+
+With `devcommands` enabled:
+
+```
+resetknownitems
+```
+
+Clears CraftSort's viewed-recipe cache alongside the vanilla reset. All recipes will show as "new" again.
+
 ## ✅ Compatibility
 
-Tested with Valheim **0.221.13** (Unity 6).
+Tested with Valheim **0.221.13** (Unity 6) across 6 mod profiles (35–101 mods each).
 
-**Compatible:** VNEI, Jewelcrafting, Recycle N Reclaim, AAA Crafting, CraftingFilter, CraftingSearchBar, MyLittleUI, SortedMenus, BetterArchery, EpicLoot, PlantEverything
+**Tested compatible — crafting interaction:**
+AAA Crafting, BetterUI Forever Maintained, SearsCatalog, ExtraSlots, CraftFromContainers, AzuCraftyBoxes, Jewelcrafting, ItemCompare, Quick Stack Store Sort Trash Restock, Recycle N Reclaim, SmarterContainers, ContentsWithin
+
+**Tested compatible — adds crafting stations:**
+PlantEverything, BoneAppetit, KnowledgeTable, Armory, Shipwright, MassFarming, PlanBuild
+
+**Tested compatible — adds recipes / framework:**
+Jotunn, EpicLoot
 
 **Incompatible:** InventorySlots (replaces the crafting UI entirely)
 
 ## 🛠 How It Works
 
-- **Transpiler** on `InventoryGui.UpdateRecipeList` injects sort before vanilla's positioning loop
+- **Transpiler** on `InventoryGui.UpdateRecipeList` injects sort/filter before vanilla's positioning loop
 - **AAA Crafting**: separate Prefix sorts `RecipeListPerfCache.CraftSortedFiltered` before pagination
+- **Weapon filter**: applied before sort — removes non-matching items from the list
 - **Food detection**: three-layer check (UI recipes → ObjectDB → name fallback) by item type & food stats
 - **Blue dots**: Postfix on `UpdateRecipeList` + `OnSelectedRecipe` for tracking viewed recipes
+- **Drag/resize**: `ButtonDragHandler` + `ResizeHandleController` with pivot-swap trick for correct growth direction
 
 ## 📦 Building from Source
 

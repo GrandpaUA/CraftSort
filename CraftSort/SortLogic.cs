@@ -8,6 +8,9 @@ namespace CraftSort
         Armor,
         Block,
         PhysDmg,
+        SlashDmg,
+        PierceDmg,
+        BluntDmg,
         ChopDmg,
         FireDmg,
         FrostDmg,
@@ -21,9 +24,17 @@ namespace CraftSort
         New
     }
 
+    public enum WeaponFilter
+    {
+        None,
+        OneHanded,
+        TwoHanded
+    }
+
     public static class SortLogic
     {
         public static SortMode CurrentMode = SortMode.None;
+        public static WeaponFilter CurrentFilter = WeaponFilter.None;
 
         private static float[] _valueCache = System.Array.Empty<float>();
         private static int[] _indexCache = System.Array.Empty<int>();
@@ -53,9 +64,15 @@ namespace CraftSort
                 case SortMode.Block:
                     return s.m_blockPower + BlockTypePriority(s);
                 case SortMode.PhysDmg:
-                    return s.m_damages.GetTotalPhysicalDamage();
+                    return s.m_damages.GetTotalPhysicalDamage() + WeaponTypePriority(s);
+                case SortMode.SlashDmg:
+                    return s.m_damages.m_slash + WeaponTypePriority(s);
+                case SortMode.PierceDmg:
+                    return s.m_damages.m_pierce + WeaponTypePriority(s);
+                case SortMode.BluntDmg:
+                    return s.m_damages.m_blunt + WeaponTypePriority(s);
                 case SortMode.ChopDmg:
-                    return s.m_damages.m_chop;
+                    return s.m_damages.m_chop + WeaponTypePriority(s);
                 case SortMode.FireDmg:
                     return s.m_damages.m_fire;
                 case SortMode.FrostDmg:
@@ -98,6 +115,31 @@ namespace CraftSort
         private static float FoodTypePriority(ItemDrop.ItemData.SharedData s)
         {
             return (int)s.m_itemType == 2 ? TypeBonus : 0f;
+        }
+
+        private static float WeaponTypePriority(ItemDrop.ItemData.SharedData s)
+        {
+            int t = (int)s.m_itemType;
+            return t == 3 || t == 14 || t == 4 || t == 20 ? TypeBonus : 0f;
+        }
+
+        public static bool PassesFilter(Recipe? recipe)
+        {
+            if (CurrentFilter == WeaponFilter.None) return true;
+            if (recipe == null) return false;
+            var shared = recipe.m_item?.m_itemData?.m_shared;
+            if (shared == null) return false;
+
+            int type = (int)shared.m_itemType;
+            switch (CurrentFilter)
+            {
+                case WeaponFilter.OneHanded:
+                    return type == 3; // OneHandedWeapon
+                case WeaponFilter.TwoHanded:
+                    return type == 14 || type == 4 || type == 20; // TwoHandedWeapon, Bow, Attach_Atgeir
+                default:
+                    return true;
+            }
         }
 
         public static void EnsureCaches(int count)

@@ -93,11 +93,15 @@ namespace CraftSort
         static void SortAvailableRecipes(InventoryGui gui)
         {
             if (!CraftSortPlugin.Enabled) return;
-            if (SortLogic.CurrentMode == SortMode.None) return;
             if (gui == null) return;
 
             var list = GetAvailableRecipesList(gui);
             if (list == null || list.Count == 0) return;
+
+            if (SortLogic.CurrentFilter != WeaponFilter.None)
+                FilterWeaponOnList(list);
+
+            if (SortLogic.CurrentMode == SortMode.None) return;
 
             if (SortLogic.CurrentMode == SortMode.New)
             {
@@ -154,6 +158,31 @@ namespace CraftSort
             if (_interfaceElementField != null)
                 return _interfaceElementField.GetValue(pair) as GameObject;
             return null;
+        }
+
+        private static void FilterWeaponOnList(IList list)
+        {
+            int originalCount = list.Count;
+            int writeIdx = 0;
+            for (int i = 0; i < originalCount; i++)
+            {
+                var recipe = GetRecipeFromPair(list[i]);
+                if (SortLogic.PassesFilter(recipe))
+                {
+                    if (writeIdx != i)
+                        list[writeIdx] = list[i];
+                    writeIdx++;
+                }
+                else
+                {
+                    var element = GetInterfaceElement(list[i]);
+                    if (element != null)
+                        element.SetActive(false);
+                }
+            }
+
+            while (list.Count > writeIdx)
+                list.RemoveAt(list.Count - 1);
         }
 
         private static void FilterNewOnList(IList list)
@@ -264,7 +293,7 @@ namespace CraftSort
         static void Prefix(ref List<Recipe> recipes)
         {
             if (!CraftSortPlugin.Enabled) return;
-            if (SortLogic.CurrentMode == SortMode.None) return;
+            if (SortLogic.CurrentMode == SortMode.None && SortLogic.CurrentFilter == WeaponFilter.None) return;
 
             if (!_aaaChecked)
             {
@@ -275,48 +304,53 @@ namespace CraftSort
             if (_cacheField == null) return;
 
             var fullList = _cacheField.GetValue(null) as List<Recipe>;
-            if (fullList == null || fullList.Count < 2) return;
+            if (fullList == null || fullList.Count == 0) return;
+
+            _filteredCache.Clear();
+
+            if (SortLogic.CurrentFilter != WeaponFilter.None)
+            {
+                for (int i = 0; i < fullList.Count; i++)
+                {
+                    if (SortLogic.PassesFilter(fullList[i]))
+                        _filteredCache.Add(fullList[i]);
+                }
+            }
+            else
+            {
+                _filteredCache.AddRange(fullList);
+            }
 
             if (SortLogic.CurrentMode == SortMode.New)
             {
                 NewRecipeTracker.EnsureLoaded();
-                _filteredCache.Clear();
-                for (int i = 0; i < fullList.Count; i++)
+                for (int i = _filteredCache.Count - 1; i >= 0; i--)
                 {
-                    if (NewRecipeTracker.IsNew(fullList[i]))
-                        _filteredCache.Add(fullList[i]);
+                    if (!NewRecipeTracker.IsNew(_filteredCache[i]))
+                        _filteredCache.RemoveAt(i);
                 }
+            }
+            else if (SortLogic.CurrentMode != SortMode.None)
+            {
+                SortLogic.SortRecipeList(_filteredCache);
+            }
 
-                if (_pageField == null || _getPerPageMethod == null)
-                {
-                    recipes = new List<Recipe>(_filteredCache);
-                    return;
-                }
+            if (_filteredCache.Count == 0) { recipes = _emptyList; return; }
 
-                int page = (int)_pageField.GetValue(null);
-                int perPage = (int)_getPerPageMethod.Invoke(null, null);
-                if (perPage < 1) perPage = 13;
-
-                int offset = (page - 1) * perPage;
-                int count = System.Math.Min(perPage, _filteredCache.Count - offset);
-                if (count <= 0) { recipes = _emptyList; return; }
-                recipes = _filteredCache.GetRange(offset, count);
+            if (_pageField == null || _getPerPageMethod == null)
+            {
+                recipes = new List<Recipe>(_filteredCache);
                 return;
             }
 
-            SortLogic.SortRecipeList(fullList);
+            int page = (int)_pageField.GetValue(null);
+            int perPage = (int)_getPerPageMethod.Invoke(null, null);
+            if (perPage < 1) perPage = 13;
 
-            if (_pageField == null || _getPerPageMethod == null) return;
-
-            int page2 = (int)_pageField.GetValue(null);
-            int perPage2 = (int)_getPerPageMethod.Invoke(null, null);
-            if (perPage2 < 1) perPage2 = 13;
-
-            int offset2 = (page2 - 1) * perPage2;
-            int count2 = System.Math.Min(perPage2, fullList.Count - offset2);
-            if (count2 <= 0) return;
-
-            recipes = fullList.GetRange(offset2, count2);
+            int offset = (page - 1) * perPage;
+            int count = System.Math.Min(perPage, _filteredCache.Count - offset);
+            if (count <= 0) { recipes = _emptyList; return; }
+            recipes = _filteredCache.GetRange(offset, count);
         }
 
         private static void ResolveAAATypes()
@@ -392,6 +426,7 @@ namespace CraftSort
                 SortLogic.CurrentMode = System.Enum.TryParse<SortMode>(
                     CraftSortPlugin.DefaultSortMode, true, out var mode)
                     ? mode : SortMode.None;
+                SortLogic.CurrentFilter = WeaponFilter.None;
             }
         }
     }
@@ -440,6 +475,7 @@ namespace CraftSort
     class Patch_OnSelectedRecipe_Viewed
     {
         private static FieldInfo? _selectedRecipeField;
+        private static bool _fieldLogged;
 
         static void Postfix(InventoryGui __instance)
         {
@@ -447,13 +483,23 @@ namespace CraftSort
             NewRecipeTracker.EnsureLoaded();
 
             _selectedRecipeField ??= AccessTools.Field(typeof(InventoryGui), "m_selectedRecipe");
-            if (_selectedRecipeField == null) return;
+            if (_selectedRecipeField == null)
+            {
+                if (!_fieldLogged)
+                {
+                    _fieldLogged = true;
+                    CraftSortPlugin.Log("[CraftSort] WARNING: m_selectedRecipe field not found — viewed tracking disabled");
+                }
+                return;
+            }
 
             object selected = _selectedRecipeField.GetValue(__instance);
             if (selected == null) return;
 
             var recipe = Patch_UpdateRecipeList.GetRecipeFromPair(selected);
-            if (recipe == null || !NewRecipeTracker.IsNew(recipe)) return;
+            if (recipe == null) return;
+
+            if (!NewRecipeTracker.IsNew(recipe)) return;
 
             NewRecipeTracker.MarkViewed(recipe);
 
@@ -462,6 +508,33 @@ namespace CraftSort
                 NewRecipeTracker.RemoveDot(element);
 
             TabUI.UpdateNewCount(NewRecipeTracker.NewCount);
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "ResetCharacterKnownItems")]
+    class Patch_Player_ResetKnown
+    {
+        static void Postfix()
+        {
+            NewRecipeTracker.ClearAll();
+
+            var gui = InventoryGui.instance;
+            if (gui != null)
+            {
+                var list = Patch_UpdateRecipeList.GetAvailableRecipesList(gui);
+                if (list != null)
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var element = Patch_UpdateRecipeList.GetInterfaceElement(list[i]);
+                        if (element != null)
+                            NewRecipeTracker.RemoveDot(element);
+                    }
+                }
+            }
+
+            NewRecipeTracker.SetNewCount(0);
+            TabUI.UpdateNewCount(0);
         }
     }
 }

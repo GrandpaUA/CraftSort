@@ -18,6 +18,13 @@ namespace CraftSort
 
         public static int NewCount => _newCount;
 
+        internal static string NormalizeName(string name)
+        {
+            if (name.EndsWith("(Clone)"))
+                return name.Substring(0, name.Length - 7);
+            return name;
+        }
+
         public static void EnsureLoaded()
         {
             var player = Player.m_localPlayer;
@@ -36,7 +43,7 @@ namespace CraftSort
                 {
                     string trimmed = line.Trim();
                     if (trimmed.Length > 0)
-                        _viewedRecipes.Add(trimmed);
+                        _viewedRecipes.Add(NormalizeName(trimmed));
                 }
             }
             else
@@ -46,29 +53,81 @@ namespace CraftSort
                 if (knownField?.GetValue(player) is HashSet<string> known)
                 {
                     foreach (string r in known)
-                        _viewedRecipes.Add(r);
+                        _viewedRecipes.Add(NormalizeName(r));
                 }
                 Save();
                 CraftSortPlugin.Log($"[NewRecipeTracker] First run for '{charName}' — snapshotted {_viewedRecipes.Count} known recipes as viewed");
             }
 
             _initialized = true;
-            CraftSortPlugin.Log($"[NewRecipeTracker] Loaded {_viewedRecipes.Count} viewed recipes for '{charName}'");
         }
 
         public static bool IsNew(Recipe? recipe)
         {
             if (recipe == null) return false;
-            return !_viewedRecipes.Contains(recipe.name);
+            return !_viewedRecipes.Contains(NormalizeName(recipe.name));
         }
 
         public static void MarkViewed(Recipe? recipe)
         {
             if (recipe == null) return;
-            if (_viewedRecipes.Add(recipe.name))
+            string name = NormalizeName(recipe.name);
+            if (_viewedRecipes.Add(name))
             {
                 Save();
                 if (_newCount > 0) _newCount--;
+            }
+        }
+
+        public static void MarkAllViewed()
+        {
+            EnsureLoaded();
+
+            var player = Player.m_localPlayer;
+            if (player != null)
+            {
+                var knownField = typeof(Player).GetField("m_knownRecipes",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                if (knownField?.GetValue(player) is HashSet<string> known)
+                {
+                    foreach (string r in known)
+                        _viewedRecipes.Add(NormalizeName(r));
+                }
+            }
+
+            var gui = InventoryGui.instance;
+            if (gui != null)
+            {
+                var list = Patch_UpdateRecipeList.GetAvailableRecipesList(gui);
+                if (list != null)
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var recipe = Patch_UpdateRecipeList.GetRecipeFromPair(list[i]);
+                        if (recipe != null)
+                            _viewedRecipes.Add(NormalizeName(recipe.name));
+                    }
+                }
+            }
+
+            Save();
+            _newCount = 0;
+        }
+
+        public static void ClearAll()
+        {
+            _viewedRecipes.Clear();
+            _newCount = 0;
+
+            var player = Player.m_localPlayer;
+            if (player != null)
+            {
+                _currentCharacter = player.GetPlayerName();
+                _initialized = true;
+
+                string file = GetSavePath(_currentCharacter);
+                if (File.Exists(file))
+                    File.Delete(file);
             }
         }
 
@@ -155,7 +214,7 @@ namespace CraftSort
             }
             catch (Exception ex)
             {
-                CraftSortPlugin.Log($"[NewRecipeTracker] Save error: {ex.Message}");
+                CraftSortPlugin.Log($"[NRT] Save error: {ex.Message}");
             }
         }
 
