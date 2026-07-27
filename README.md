@@ -4,18 +4,27 @@
 
 Revival of the deprecated SortCraft mod. Adds icon tab buttons to the left side of every crafting station. Click to sort, click again to toggle off. Drag to reposition, resize to fit your screen.
 
-![Combat station — 2-column grid](docs/2.png)
-![Food station — single column](docs/1.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GrandpaUA/CraftSort/main/docs/2.png" alt="Combat station">
+  &ensp;
+  <img src="https://raw.githubusercontent.com/GrandpaUA/CraftSort/main/docs/1.png" alt="Food station">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GrandpaUA/CraftSort/main/docs/3.gif" alt="Drag & resize demo">
+</p>
 
 ---
 
 ## ⚡ Features
 
 - **18 sort/filter modes** — food stations show 7 tabs, combat stations show up to 17 in a flexible grid
+- **All-icon buttons** — every button uses a custom icon, no text
 - **Weapon filters** — 1H / 2H toggle buttons (blue border) combine with any sort mode
 - **Auto food/combat detection** — works with any modded station by inspecting recipe content
-- **New recipe indicator** — blue dot on unviewed recipes + "New" filter tab
-- **Clean button** — marks all known recipes as viewed, clears all blue dots
+- **New recipe indicator** — yellow dot on unviewed recipes + "New" filter tab
+- **Clean button** — marks all known recipes as viewed, clears all yellow dots
+- **Independent panels** — food and combat menus have separate position, width, and layout
 - **Drag & resize** — right-click the corner handle to enter edit mode, then drag buttons to reposition or resize the panel
 - **Per-button config** — enable/disable any button via config file
 - **Per-character persistence** — tracked per save file
@@ -92,22 +101,27 @@ Show_Clean = true
 
 ### UI Position & Size
 
-Persisted automatically when you drag or resize the panel:
+Each panel has independent position and width, persisted automatically when you drag or resize:
 
 ```ini
 [UI]
-PositionX = -9
-PositionY = -200
-CombatPanelWidth = 104
+FoodPosX = -9
+FoodPosY = -200
+FoodWidth = 50
+CombatPosX = -9
+CombatPosY = -200
+CombatWidth = 104
 ```
 
-##  Drag & Resize
+## 🖱 Drag & Resize
 
-1. **Hover** over the bottom-right corner of the button panel — a small handle appears
+1. **Hover** over the bottom-right corner of the button panel — a small handle with dark background appears
 2. **Right-click** the handle to enter **Edit Mode** (handle turns solid yellow)
-3. **Drag any button** to move the entire panel
+3. **Drag any button** to move the panel
 4. **Drag the corner handle** to resize (columns adjust automatically)
 5. **Right-click** the handle again to exit Edit Mode
+
+Each panel (food / combat) is positioned and resized independently.
 
 ## 🎮 Console Command
 
@@ -140,8 +154,9 @@ Jotunn, EpicLoot
 - **AAA Crafting**: separate Prefix sorts `RecipeListPerfCache.CraftSortedFiltered` before pagination
 - **Weapon filter**: applied before sort — removes non-matching items from the list
 - **Food detection**: three-layer check (UI recipes → ObjectDB → name fallback) by item type & food stats
-- **Blue dots**: Postfix on `UpdateRecipeList` + `OnSelectedRecipe` for tracking viewed recipes
+- **Yellow dots**: Postfix on `UpdateRecipeList` + `OnSelectedRecipe` for tracking viewed recipes
 - **Drag/resize**: `ButtonDragHandler` + `ResizeHandleController` with pivot-swap trick for correct growth direction
+- **Icons**: 20 RGBA icons embedded as base64, loaded via `Texture2D.LoadRawTextureData` at runtime
 
 ## 📦 Building from Source
 
@@ -173,3 +188,9 @@ Found a bug, have an idea, or want to request compatibility with another mod? Re
 ## 📄 License
 
 AGPL-3.0
+
+---
+
+## 📋 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
